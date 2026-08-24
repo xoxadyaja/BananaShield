@@ -1,0 +1,225 @@
+BANANASHIELD - CLEAN INSTALLATION AND RUN GUIDE
+================================================
+
+Use this guide when the previous BananaShield database has been deleted and the
+system needs a new, empty database.
+
+Project folder:
+D:\Capstone\BananaShield Final
+
+
+1. REQUIRED SOFTWARE
+--------------------
+
+- XAMPP with PHP 8.2 or newer and MySQL/MariaDB
+- Composer for installing the Laravel PHP dependencies
+- Python 3.11 or newer only when using the optional FastAPI service
+
+Installed dependencies are intentionally excluded from the Git repository.
+After cloning the project, install them using the lock files as described
+below.
+
+
+2. START MYSQL AND CREATE A NEW DATABASE
+----------------------------------------
+
+Open the XAMPP Control Panel and start MySQL.
+
+Recommended method using phpMyAdmin:
+
+1. Start Apache in XAMPP as well.
+2. Open http://localhost/phpmyadmin in a browser.
+3. Select New.
+4. Enter bananashield as the database name.
+5. Select utf8mb4_unicode_ci as the collation, then select Create.
+
+PowerShell alternative for the default XAMPP root account with no password:
+
+& "C:\xampp\mysql\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS bananashield CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+If the MySQL root account has a password, use -p instead and enter the password
+when prompted:
+
+& "C:\xampp\mysql\bin\mysql.exe" -u root -p -e "CREATE DATABASE IF NOT EXISTS bananashield CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+Do not continue until the bananashield database appears in phpMyAdmin.
+
+
+3. OPEN THE LARAVEL PROJECT
+---------------------------
+
+Open PowerShell and run:
+
+cd "D:\Capstone\BananaShield Final\web-application"
+
+Install Composer for Windows from:
+https://getcomposer.org/download/
+
+During Composer setup, select:
+C:\xampp\php\php.exe
+
+Close PowerShell, open a new PowerShell window, return to the web-application
+folder, and run:
+
+composer --version
+composer install
+
+
+4. CONFIGURE THE LARAVEL ENVIRONMENT
+------------------------------------
+
+If web-application\.env does not exist, run:
+
+Copy-Item .env.example .env
+php artisan key:generate
+
+If .env already exists and APP_KEY has a value, keep the existing key.
+
+Confirm these values in web-application\.env:
+
+APP_NAME=BananaShield
+APP_ENV=local
+APP_DEBUG=true
+APP_URL=http://127.0.0.1:8000
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=bananashield
+DB_USERNAME=root
+DB_PASSWORD=
+FILESYSTEM_DISK=local
+AI_MODE=mock
+BANANASHIELD_SEED_PASSWORD=ChangeMe!2026
+
+If the MySQL root account has a password, place it after DB_PASSWORD=.
+
+
+5. BUILD THE NEW DATABASE
+-------------------------
+
+From the web-application folder, run:
+
+php artisan optimize:clear
+php artisan migrate --seed
+
+This creates the complete revised schema and initial data, including:
+
+- Farm Owner, Monitoring Personnel, and System Administrator roles
+- Four supported disease categories
+- Versioned advisory records
+- Shared EfficientNet-B0 model registry and confidence threshold
+- Farm profile, sections/areas, and notification preference records
+- Demonstration accounts
+
+For a newly created database, do not use migrate:fresh. The normal
+migrate --seed command is sufficient.
+
+If "Unknown database 'bananashield'" appears, repeat Step 2 and create the
+database before running the migration again.
+
+
+6. START THE WEB APPLICATION
+----------------------------
+
+Run:
+
+php artisan serve --host=0.0.0.0 --port=8000
+
+Keep this PowerShell window open. Then open:
+
+http://127.0.0.1:8000
+
+Seeded accounts use the password configured by BANANASHIELD_SEED_PASSWORD.
+The default local password is ChangeMe!2026.
+
+- Farm Owner: owner@bananashield.local
+- Monitoring Personnel: monitor@bananashield.local
+- System Administrator: admin@bananashield.local
+
+The administrator should change deployment credentials and create only
+authorized farm accounts before real use.
+
+
+7. ACCESS THE SYSTEM FROM A PHONE
+---------------------------------
+
+Connect the phone and computer to the same Wi-Fi network.
+
+On the computer, run:
+
+ipconfig
+
+Find the Wi-Fi IPv4 Address and open this address on the phone:
+
+http://YOUR_IPV4_ADDRESS:8000
+
+Allow PHP through Windows Defender Firewall on Private networks if prompted.
+A production deployment must use HTTPS.
+
+
+8. OPTIONAL FASTAPI SERVICE
+---------------------------
+
+The default AI_MODE=mock workflow does not require FastAPI. The Laravel system
+can be demonstrated immediately after completing Steps 1 through 6.
+
+To run the separate FastAPI service, open a second PowerShell window:
+
+cd "D:\Capstone\BananaShield Final\ai-service"
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host=127.0.0.1 --port=8001
+
+Use matching AI_SERVICE_TOKEN values in web-application\.env and
+ai-service\.env.
+
+For a trained EfficientNet-B0 file, install the optional model dependency:
+
+pip install -r requirements-model.txt
+
+Then configure ai-service\.env:
+
+AI_MODE=model
+MODEL_PATH=model_files/efficientnet_b0.keras
+MODEL_VERSION=your-validated-version
+CONFIDENCE_THRESHOLD=0.75
+
+The trained model must output four probabilities in this exact order:
+
+1. Healthy Banana
+2. Black Sigatoka
+3. Fusarium Wilt
+4. Banana Bunchy Top Disease
+
+Register the same validated model version and confidence threshold in the
+System Administrator workspace.
+
+
+9. TEST THE SYSTEM (OPTIONAL)
+-----------------------------
+
+Laravel:
+
+cd "D:\Capstone\BananaShield Final\web-application"
+php artisan test
+
+FastAPI:
+
+cd "D:\Capstone\BananaShield Final\ai-service"
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+
+
+10. IMPORTANT LIMITATIONS
+-------------------------
+
+- Mock mode is a workflow demonstration and is not learned classification.
+- Every result is preliminary visual screening, not a confirmed diagnosis.
+- Confidence is not disease probability, severity, or proof.
+- BananaShield cannot detect pre-symptomatic infection or unsupported diseases,
+  pests, nutrient deficiencies, injuries, or environmental stresses.
+- Inconclusive, serious, worsening, or uncertain cases should be referred for
+  qualified agricultural assessment or laboratory confirmation.
+- Analytics summarize only BananaShield submissions and are not official
+  disease statistics.

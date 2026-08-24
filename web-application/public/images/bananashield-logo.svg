@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" role="img" aria-labelledby="title desc">
+  <title id="title">BananaShield logo</title>
+  <desc id="desc">A golden banana protected by a green shield</desc>
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2=".85" y2="1">
+      <stop stop-color="#FFE28A"/>
+      <stop offset=".52" stop-color="#F2BC45"/>
+      <stop offset="1" stop-color="#D9941D"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#3A8A61"/>
+      <stop offset=".48" stop-color="#236145"/>
+      <stop offset="1" stop-color="#123525"/>
+    </linearGradient>
+  </defs>
+  <path d="M13 17c-1 15 3 28 14 36 8 6 19 7 30 1-12 2-22-2-27-10-5-8-4-17 0-25-6 6-10 8-17-2Z" fill="url(#gold)" stroke="#123525" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="m11.2 14.1 5.9.9-1 6-5.2-1.8Z" fill="#A56F1E" stroke="#123525" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M38 22c7.2 3 12.5 3 19.5 0v14.8c0 12.2-7 20.5-19.5 25.8-12.5-5.3-19.5-13.6-19.5-25.8V22c7 3 12.3 3 19.5 0Z" fill="url(#shield)" stroke="#F3C65A" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="M27.6 38.6c6.4.2 11.6-3.8 15.7-10.9.5 8.3-3.8 15.1-13.2 18.5" fill="none" stroke="#FFD66E" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

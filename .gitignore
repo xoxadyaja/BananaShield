@@ -1,0 +1,52 @@
+# Local environment and credentials
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+
+# Installed dependencies and generated builds
+ai-service/.venv/
+web-application/vendor/
+web-application/node_modules/
+web-application/public/build/
+web-application/public/hot
+web-application/runtime/
+
+# Python and test caches
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.phpunit.cache/
+web-application/.phpunit.result.cache
+
+# Runtime data, logs, and local databases
+*.log
+*.sqlite
+*.sqlite-*
+output/
+web-application/public/storage/
+
+# Large model artifacts are supplied separately after validation
+ai-service/model_files/*.keras
+ai-service/model_files/*.h5
+ai-service/model_files/*.onnx
+ai-service/model_files/*.pt
+ai-service/model_files/*.pth
+
+# Codex and editor-local tooling
+.agents/
+.codex-review/
+.codex-tools/
+skills-lock.json
+.idea/
+.vscode/
+.fleet/
+.zed/
+
+# Downloadable local tools and OS metadata
+composer.phar
+.DS_Store
+Thumbs.db
