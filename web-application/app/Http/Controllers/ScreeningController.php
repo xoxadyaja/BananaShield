@@ -11,12 +11,13 @@ use App\Models\Prediction;
 use App\Services\AiClient;
 use App\Services\AuditLogger;
 use App\Services\MockPredictionService;
+use App\Services\PartDetectionReceipt;
+use App\Services\PartDetectionService;
 use App\Services\PrototypeContentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 class ScreeningController extends Controller
 {
@@ -44,6 +45,9 @@ class ScreeningController extends Controller
             'inference_time_ms' => 418,
             'quality_status' => 'accepted',
             'quality_flags' => [],
+            'detected_part' => 'Leaf',
+            'part_detection_provider' => 'Gemini',
+            'part_detection_status' => 'valid',
             'message' => 'The visible symptoms are consistent with Black Sigatoka.',
             'disclaimer' => 'This is a preliminary visual-screening result and not a confirmed diagnosis.',
         ];
@@ -57,16 +61,62 @@ class ScreeningController extends Controller
         ]);
     }
 
+    public function detectPart(
+        Request $request,
+        PartDetectionService $detector,
+        PartDetectionReceipt $receipt
+    ) {
+        $request->validate([
+            'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
+
+        $size = getimagesize($request->file('image')->getRealPath());
+        if (! $size || $size[0] < 224 || $size[1] < 224) {
+            return response()->json([
+                'message' => 'The image must be readable and at least 224 x 224 pixels.',
+                'errors' => ['image' => ['The image must be readable and at least 224 x 224 pixels.']],
+            ], 422);
+        }
+
+        try {
+            $result = $detector->detect($request->file('image'));
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'success' => false,
+                'is_banana_image' => false,
+                'part' => 'Unknown',
+                'usable' => false,
+                'message' => 'Image analysis is temporarily unavailable. Please try again.',
+            ], 503);
+        }
+
+        $response = [
+            'success' => true,
+            'is_banana_image' => $result['is_banana_image'],
+            'part' => $result['part'],
+            'usable' => $result['usable'],
+            'message' => $result['message'],
+            'status' => $result['status'],
+        ];
+        if ($result['usable']) {
+            $response['detection_receipt'] = $receipt->issue($request->file('image'), $result);
+        }
+
+        return response()->json($response);
+    }
+
     public function store(
         Request $request,
         AiClient $ai,
         MockPredictionService $mock,
+        PartDetectionService $detector,
+        PartDetectionReceipt $receipt,
         PrototypeContentService $content,
         AuditLogger $audit
     ) {
         $data = $request->validate([
-            'image_path' => 'required|in:leaf,whole_plant',
-            'specific_view' => 'required|in:whole_leaf,leaf_surface,leaf_underside,leaf_margins,midrib_veins,full_plant,crown_upper_leaves,lower_older_leaves,pseudostem_base',
             'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:5120',
             'variety' => 'nullable|in:Cardava,Binangay,Tundan,Other,Unknown',
             'plant_age' => 'nullable|integer|min:1|max:3650',
@@ -75,24 +125,37 @@ class ScreeningController extends Controller
             'farm_section' => 'nullable|string|max:120',
             'tree_codename' => 'nullable|string|max:120',
             'symptom_notes' => 'nullable|string|max:2000',
+            'part_detection_receipt' => 'nullable|string|max:12000',
         ]);
-        $viewsByPath = [
-            'leaf' => ['whole_leaf', 'leaf_surface', 'leaf_underside', 'leaf_margins', 'midrib_veins'],
-            'whole_plant' => ['full_plant', 'crown_upper_leaves', 'lower_older_leaves', 'pseudostem_base'],
-        ];
-        if (! in_array($data['specific_view'], $viewsByPath[$data['image_path']], true)) {
-            throw ValidationException::withMessages([
-                'specific_view' => 'Please select a symptom area that matches the main image path.',
-            ]);
-        }
-
-        // Preserve the existing case and AI-service field names while storing the new capture hierarchy separately.
-        $data['screening_path'] = $data['image_path'];
-        $data['view_type'] = $data['specific_view'];
+        $data['screening_path'] = 'auto_detected';
+        $data['view_type'] = 'auto_detected';
+        $data['image_path'] = 'auto_detected';
+        $data['specific_view'] = 'auto_detected';
 
         $size = getimagesize($request->file('image')->getRealPath());
         if (! $size || $size[0] < 224 || $size[1] < 224) {
             return back()->withErrors(['image' => 'Image must be readable and at least 224 x 224 pixels.'])->withInput();
+        }
+
+        try {
+            $partResult = filled($data['part_detection_receipt'] ?? null)
+                ? $receipt->verify($request->file('image'), $data['part_detection_receipt'])
+                : $detector->detect($request->file('image'));
+        } catch (\Throwable $exception) {
+            report($exception);
+            $message = filled($data['part_detection_receipt'] ?? null)
+                ? $exception->getMessage()
+                : 'Image analysis is temporarily unavailable. No disease classification was run; please retry.';
+
+            return back()->withErrors(['image' => $message])->withInput();
+        }
+
+        if (($partResult['usable'] ?? false) !== true) {
+            $message = ($partResult['status'] ?? null) === 'invalid_image'
+                ? 'The submitted image does not appear to contain a banana plant. Please capture or upload a clear banana plant image.'
+                : 'The image is not clear enough to analyze. Please retake it with proper lighting, focus, and visibility.';
+
+            return back()->withErrors(['image' => $message])->withInput();
         }
 
         if (config('services.bananashield.mode') === 'mock') {
@@ -111,6 +174,9 @@ class ScreeningController extends Controller
         $result['view_type'] = $data['view_type'];
         $result['image_path'] = $data['image_path'];
         $result['specific_view'] = $data['specific_view'];
+        $result['detected_part'] = $partResult['part'];
+        $result['part_detection_provider'] = $partResult['provider'];
+        $result['part_detection_status'] = $partResult['status'];
 
         $model = ModelVersion::query()->where('active', true)->latest()->first();
         $threshold = $model?->confidence_threshold ?? (float) ($result['confidence_threshold'] ?? 0.75);
@@ -156,6 +222,8 @@ class ScreeningController extends Controller
                 'view_type' => $data['view_type'],
                 'image_path' => $data['image_path'],
                 'specific_view' => $data['specific_view'],
+                'detected_part' => $partResult['part'],
+                'part_detection_provider' => $partResult['provider'],
                 'case_created' => false,
             ]);
             $advisory = $this->advisoryFor($content, 'healthy_banana');
@@ -173,7 +241,7 @@ class ScreeningController extends Controller
         $storedPath = null;
         try {
             $storedPath = $request->file('image')->store('cases/'.now()->format('Y/m'), 'local');
-            [$case, $caseImage] = DB::transaction(function () use ($request, $data, $result, $size, $model, $storedPath) {
+            [$case, $caseImage] = DB::transaction(function () use ($request, $data, $result, $partResult, $size, $model, $storedPath) {
                 $case = PlantCase::create([
                     'case_number' => 'BS-'.now()->format('Y').'-'.strtoupper(Str::random(8)),
                     'submitted_by' => $request->user()->id,
@@ -204,6 +272,9 @@ class ScreeningController extends Controller
                     'width' => $size[0],
                     'height' => $size[1],
                     'image_quality_status' => $result['quality_status'] ?? 'accepted',
+                    'detected_part' => $partResult['part'],
+                    'part_detection_provider' => $partResult['provider'],
+                    'part_detection_status' => $partResult['status'],
                     'metadata_removed' => false,
                     'uploaded_at' => now(),
                 ]);
@@ -231,7 +302,11 @@ class ScreeningController extends Controller
             return back()->withErrors(['image' => 'The screening could not be saved. No completed prediction record was created; please retry.'])->withInput();
         }
 
-        $audit->record('screening.case_created', $case, metadata: ['decision_status' => $result['decision_status']]);
+        $audit->record('screening.case_created', $case, metadata: [
+            'decision_status' => $result['decision_status'],
+            'detected_part' => $partResult['part'],
+            'part_detection_provider' => $partResult['provider'],
+        ]);
         $advisory = $this->advisoryFor($content, $result['predicted_class'] ?? 'inconclusive');
 
         return view('screening.result', compact('result', 'data', 'advisory', 'case', 'caseImage'));

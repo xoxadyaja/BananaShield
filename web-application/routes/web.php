@@ -23,6 +23,7 @@ Route::get('/dashboard',DashboardController::class)->middleware('auth')->name('d
 Route::middleware(['auth', 'role:monitoring_personnel'])->group(function () {
     Route::get('/screenings/new',[ScreeningController::class,'create'])->name('screenings.create');
     Route::get('/screenings/sample-result',[ScreeningController::class,'sampleResult'])->name('screenings.sample');
+    Route::post('/screenings/detect-part',[ScreeningController::class,'detectPart'])->middleware('throttle:20,1')->name('screenings.detect-part');
     Route::post('/screenings',[ScreeningController::class,'store'])->middleware('throttle:10,1')->name('screenings.store');
     Route::post('/cases/{case}/follow-ups',[FollowUpController::class,'store'])->name('cases.follow-ups.store');
 });

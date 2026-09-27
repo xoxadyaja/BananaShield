@@ -186,6 +186,17 @@ MODEL_PATH=model_files/efficientnet_b0.keras
 MODEL_VERSION=your-validated-version
 CONFIDENCE_THRESHOLD=0.75
 
+Configure banana plant-part detection separately in ai-service\.env:
+
+PART_DETECTION_MODE=gemini
+GEMINI_API_KEY=your-server-side-key
+GEMINI_MODEL=gemini-3.8-flash
+
+Set PART_DETECTION_MODE=gemini in web-application\.env as well. The Gemini key
+belongs only in ai-service\.env and must never be added to Laravel Blade or
+frontend JavaScript. For an offline demonstration, use PART_DETECTION_MODE=mock
+in both services.
+
 The trained model must output four probabilities in this exact order:
 
 1. Healthy Banana

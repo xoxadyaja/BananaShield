@@ -14,6 +14,7 @@
 <article class="card result-hero">
     <section class="result-copy">
         <span class="status-pill">{{ ucwords($result['decision_status']) }}</span>
+        <div class="detected-view"><span class="detected-view-mark" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20c8 0 15-5 16-16-8 1-15 8-16 16Z"/></svg></span><div><span>Detected image view</span><strong>{{ $result['detected_part'] ?? ($caseImage ?? null)?->detected_part ?? 'Not recorded' }}</strong><small>Identified by {{ $result['part_detection_provider'] ?? ($caseImage ?? null)?->part_detection_provider ?? 'Gemini' }} before the separate EfficientNet-B0 disease classification.</small></div></div>
         <p class="eyebrow" style="margin-top:26px">Supported model category</p>
         <h2 class="result-title">{{ $result['display_label'] }}</h2>
         <p class="result-message">{{ $result['message'] }}</p>

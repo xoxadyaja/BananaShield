@@ -5,13 +5,13 @@ BananaShield is a centralized Laravel Blade and FastAPI decision-support system 
 The implementation follows the August 2026 Input–Process–Output conceptual framework:
 
 - Three roles: **Farm Owner**, **Monitoring Personnel**, and **System Administrator**.
-- Two guided capture paths: **Leaf Screening** and **Whole-Plant Screening**.
-- One shared **EfficientNet-B0** integration for images accepted from either path.
+- Automatic **Gemini Vision** validation and banana plant-part/view identification using the fixed categories Leaf, Pseudostem, Crown / Upper Leaves, Whole Plant, and Unknown.
+- One shared **EfficientNet-B0** integration that runs only after Gemini accepts the image as a clear, supported banana plant view.
 - Four supported output categories: **Healthy Banana**, **Black Sigatoka**, **Fusarium Wilt**, and **Banana Bunchy Top Disease**.
 - Low-confidence, poor-quality, mismatched-view, or unsupported results become **inconclusive** and recommend another image or professional assessment.
 - Private case images, contextual farm information, follow-up observations/images/actions/statuses, owner review, versioned advisories, model registry, confidence thresholds, and activity logs.
 - Farm Owner management of farm details, sections/areas, and stored notification preferences.
-- Seven aligned stages: role-based authentication, guided image validation, preprocessing, shared classification, confidence generation, advisory/case recording, and follow-up/analytics.
+- Eight aligned stages: role-based authentication, upload validation, Gemini plant-view identification, image acceptance, EfficientNet-B0 preprocessing/classification, confidence generation, advisory/case recording, and follow-up/analytics.
 - Seven outputs: preliminary class, confidence, advisory, farm case/report, follow-ups, monitoring summaries, and system-recorded analytics.
 - Analytics describe only records submitted through BananaShield and are never presented as official incidence, prevalence, outbreak, or epidemiological-surveillance statistics.
 
@@ -20,7 +20,7 @@ BananaShield is not a confirmed diagnosis, disease-severity measurement, laborat
 ## Project structure
 
 - `web-application/` - Laravel 12 application, MySQL data, authentication, role authorization, reporting, monitoring, advisory, analytics, and administration.
-- `ai-service/` - FastAPI image-validation and shared four-class model contract.
+- `ai-service/` - FastAPI image validation, Gemini plant-part detection, and the separate shared four-class EfficientNet-B0 model contract.
 - `documentation/` - supporting project documentation.
 
 See [documentation/CONCEPTUAL_FRAMEWORK.md](documentation/CONCEPTUAL_FRAMEWORK.md) for the complete role inputs, seven process stages, seven outputs, safeguards, and implementation mapping.
@@ -37,6 +37,8 @@ See [documentation/CONCEPTUAL_FRAMEWORK.md](documentation/CONCEPTUAL_FRAMEWORK.m
 4. `banana_bunchy_top_disease`
 
 Do not activate model mode until the file is trained, independently evaluated, documented, and registered in the System Administrator workspace with a validated confidence threshold.
+
+Plant-part detection is configured independently. Use `PART_DETECTION_MODE=mock` for local demonstrations. For Gemini-backed detection, set `PART_DETECTION_MODE=gemini`, configure `GEMINI_API_KEY` only in `ai-service/.env`, and keep the key out of Laravel, Blade, and browser JavaScript.
 
 ## Quick setup
 

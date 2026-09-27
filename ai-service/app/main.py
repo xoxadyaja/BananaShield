@@ -3,14 +3,18 @@ import hashlib
 import os
 import time
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 import numpy as np
 from PIL import Image, ImageFilter, ImageStat
 from dotenv import load_dotenv
 
 load_dotenv()
 
+from app.api.part_detection import router as part_detection_router
+from app.dependencies import authorize
+
 app = FastAPI(title="BananaShield AI Service", version="0.2.0")
+app.include_router(part_detection_router)
 MODE = os.getenv("AI_MODE", "mock")
 TOKEN = os.getenv("AI_SERVICE_TOKEN", "change-me")
 MODEL_PATH = os.getenv("MODEL_PATH", "models/efficientnet_b0.keras")
@@ -25,16 +29,8 @@ CLASSES = [
     ("fusarium_wilt", "Fusarium Wilt"),
     ("banana_bunchy_top_disease", "Banana Bunchy Top Disease"),
 ]
-VALID_VIEWS = {
-    "leaf": {"whole_leaf", "leaf_surface", "leaf_underside", "leaf_margins", "midrib_veins"},
-    "whole_plant": {"full_plant", "crown_upper_leaves", "lower_older_leaves", "pseudostem_base"},
-}
+AUTO_DETECTED_AREA = 'auto_detected'
 _model = None
-
-
-def authorize(x_ai_token: str = Header(default="")):
-    if x_ai_token != TOKEN:
-        raise HTTPException(401, "Unauthorized service token")
 
 
 def load_configured_model():
@@ -86,22 +82,22 @@ def health():
         "architecture": "EfficientNet-B0",
         "model_version": MODEL_VERSION,
         "supported_classes": [slug for slug, _ in CLASSES],
-        "capture_paths": list(VALID_VIEWS),
+        "image_area_analysis": "automatic",
+        "part_detection": "Gemini Vision" if os.getenv("PART_DETECTION_MODE", MODE) != "mock" else "Gemini Vision integration (mock output)",
     }
 
 
 @app.post("/api/v1/predict", dependencies=[Depends(authorize)])
 async def predict(
     image: UploadFile = File(...),
-    screening_path: str = Form(...),
-    view_type: str = Form(...),
+    analysis_mode: str = Form('automatic'),
     demo_scenario: str | None = Form(None),
 ):
     started = time.perf_counter()
-    if screening_path not in VALID_VIEWS:
-        raise HTTPException(422, "Invalid screening path")
-    if view_type not in VALID_VIEWS[screening_path]:
-        raise HTTPException(422, "Image view does not match the selected screening path")
+    if analysis_mode != 'automatic':
+        raise HTTPException(422, 'Only automatic image-area analysis is supported')
+    screening_path = AUTO_DETECTED_AREA
+    view_type = AUTO_DETECTED_AREA
     if image.content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(422, "Unsupported image format")
 
