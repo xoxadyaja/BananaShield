@@ -1,7 +1,9 @@
 from io import BytesIO
 
 from fastapi.testclient import TestClient
+import httpx
 from PIL import Image, ImageDraw
+import pytest
 
 from app.main import app, TOKEN
 
@@ -111,3 +113,71 @@ def test_detect_part_rejects_unsupported_or_corrupted_files(monkeypatch):
 
     assert unsupported.status_code == 422
     assert corrupted.status_code == 422
+
+
+class FakeAsyncClient:
+    def __init__(self, *, response=None, error=None, **_kwargs):
+        self.response = response
+        self.error = error
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return False
+
+    async def post(self, *_args, **_kwargs):
+        if self.error:
+            raise self.error
+        return self.response
+
+
+def assert_provider_failure_contract(response):
+    assert response.status_code == 503
+    assert response.json() == {
+        "success": False,
+        "is_banana_image": False,
+        "part": "Unknown",
+        "usable": False,
+        "message": "Image analysis is temporarily unavailable. Please try again.",
+    }
+
+
+def test_detect_part_converts_gemini_timeout_to_stable_failure(monkeypatch):
+    monkeypatch.setenv("PART_DETECTION_MODE", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "app.services.gemini_service.httpx.AsyncClient",
+        lambda **kwargs: FakeAsyncClient(
+            error=httpx.ReadTimeout("Gemini timed out", request=httpx.Request("POST", "https://example.test")),
+            **kwargs,
+        ),
+    )
+
+    response = client.post(
+        "/detect-part",
+        headers={"X-AI-Token": TOKEN},
+        files={"file": ("plant.jpg", picture(), "image/jpeg")},
+    )
+
+    assert_provider_failure_contract(response)
+
+
+@pytest.mark.parametrize("status_code", [401, 500])
+def test_detect_part_converts_gemini_http_errors_to_stable_failure(monkeypatch, status_code):
+    monkeypatch.setenv("PART_DETECTION_MODE", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    request = httpx.Request("POST", "https://example.test")
+    rejected = httpx.Response(status_code, request=request, json={"error": "provider failure"})
+    monkeypatch.setattr(
+        "app.services.gemini_service.httpx.AsyncClient",
+        lambda **kwargs: FakeAsyncClient(response=rejected, **kwargs),
+    )
+
+    response = client.post(
+        "/detect-part",
+        headers={"X-AI-Token": TOKEN},
+        files={"file": ("plant.jpg", picture(), "image/jpeg")},
+    )
+
+    assert_provider_failure_contract(response)

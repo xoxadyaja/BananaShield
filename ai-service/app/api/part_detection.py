@@ -13,6 +13,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["plant-part detection"])
 
 
+def _provider_unavailable_response() -> JSONResponse:
+    """Return the stable failure contract expected by the Laravel boundary."""
+    return JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "is_banana_image": False,
+            "part": "Unknown",
+            "usable": False,
+            "message": "Image analysis is temporarily unavailable. Please try again.",
+        },
+    )
+
+
 @router.post(
     "/detect-part",
     response_model=PartDetectionResult,
@@ -24,13 +38,10 @@ async def detect_banana_part(file: UploadFile = File(...)):
         return await detect_part(raw, file.content_type or "application/octet-stream")
     except GeminiServiceError:
         logger.exception("Plant-part detection failed")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "success": False,
-                "is_banana_image": False,
-                "part": "Unknown",
-                "usable": False,
-                "message": "Image analysis is temporarily unavailable. Please try again.",
-            },
-        )
+        return _provider_unavailable_response()
+    except Exception:
+        # Keep provider/library defects behind the same stable API boundary. The
+        # exception is logged server-side, but no provider detail or key is sent
+        # to Laravel or the browser.
+        logger.exception("Unexpected plant-part detection failure")
+        return _provider_unavailable_response()

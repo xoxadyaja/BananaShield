@@ -155,16 +155,23 @@ async def detect_part(image_bytes: bytes, mime_type: str) -> PartDetectionResult
             response = await client.post(endpoint, headers=headers, json=request_payload)
             response.raise_for_status()
             response_payload = response.json()
-    except (httpx.TimeoutException, httpx.NetworkError) as exc:
+    except httpx.TimeoutException as exc:
         raise GeminiServiceError("Gemini is temporarily unavailable.") from exc
     except httpx.HTTPStatusError as exc:
         raise GeminiServiceError("Gemini rejected the part-detection request.") from exc
+    except httpx.RequestError as exc:
+        # Includes connection, protocol, DNS, proxy, and other transport errors
+        # not covered by TimeoutException.
+        raise GeminiServiceError("Gemini is temporarily unavailable.") from exc
     except (json.JSONDecodeError, ValueError) as exc:
         raise GeminiServiceError("Gemini returned an unreadable response.") from exc
 
+    if not isinstance(response_payload, dict):
+        raise GeminiServiceError("Gemini returned an invalid response envelope.")
+
     try:
         raw_result = json.loads(_extract_output_text(response_payload))
-    except (json.JSONDecodeError, TypeError) as exc:
+    except (json.JSONDecodeError, TypeError, AttributeError) as exc:
         raise GeminiServiceError("Gemini returned invalid structured output.") from exc
     if not isinstance(raw_result, dict):
         raise GeminiServiceError("Gemini returned an invalid part-detection response.")
