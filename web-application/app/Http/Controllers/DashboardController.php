@@ -23,7 +23,7 @@ class DashboardController extends Controller
             'latestCase' => (clone $cases)->first(),
             'recentCases' => (clone $cases)->limit(5)->get(),
             'farmProfile' => $user->role === 'farm_owner'
-                ? FarmProfile::query()->withCount(['sections as active_sections_count' => fn ($query) => $query->where('active', true)])->first()
+                ? FarmProfile::query()->where('managed_by', $user->id)->withCount(['sections as active_sections_count' => fn ($query) => $query->where('active', true)])->latest('updated_at')->first()
                 : null,
         ]);
     }

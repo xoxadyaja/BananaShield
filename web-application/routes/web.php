@@ -41,6 +41,12 @@ Route::get('/analytics',AnalyticsController::class)
 Route::middleware(['auth', 'role:farm_owner'])->prefix('farm-settings')->name('farm-settings.')->group(function () {
     Route::get('/', [FarmSettingsController::class, 'index'])->name('index');
     Route::patch('/', [FarmSettingsController::class, 'update'])->name('update');
+    Route::post('/farms', [FarmSettingsController::class, 'storeFarm'])->name('farms.store');
+    Route::patch('/farms/{farm}', [FarmSettingsController::class, 'updateFarm'])->name('farms.update');
+    Route::post('/blocks', [FarmSettingsController::class, 'storeBlocks'])->name('blocks.store');
+    Route::post('/farms/{farm}/blocks', [FarmSettingsController::class, 'storeFarmSection'])->name('farms.blocks.store');
+    Route::post('/farms/{farm}/blocks/batch', [FarmSettingsController::class, 'storeFarmSections'])->name('farms.blocks.batch-store');
+    Route::patch('/farms/{farm}/blocks/{section}', [FarmSettingsController::class, 'updateFarmSection'])->name('farms.blocks.update');
     Route::post('/sections', [FarmSettingsController::class, 'storeSection'])->name('sections.store');
     Route::patch('/sections/{section}', [FarmSettingsController::class, 'updateSection'])->name('sections.update');
 });

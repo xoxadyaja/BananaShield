@@ -9,11 +9,16 @@
         <div class="monitor-top"><div><p class="eyebrow">Preliminary classification</p><h2 class="case-result-title">{{ $case->latestPrediction?->display_label ?? 'Result unavailable' }}</h2></div><span class="case-status {{ in_array($case->status,['worsening','referred']) ? 'danger' : 'warning' }}">{{ ucwords($case->status) }}</span></div>
         @if($case->latestPrediction)
         <p>{{ $case->latestPrediction->result_message }}</p>
-        <div class="confidence"><div class="confidence-head"><span>Model confidence</span><strong>{{ round($case->latestPrediction->confidence*100) }}%</strong></div><div class="confidence-track"><div class="confidence-fill" style="width:{{ round($case->latestPrediction->confidence*100) }}%"></div></div></div>
-        <div class="notice notice-amber"><span>{{ $case->latestPrediction->disclaimer }} Confidence does not confirm disease presence or severity.</span></div>
+        <div class="confidence"><div class="confidence-head"><span>Probability</span><strong>{{ round($case->latestPrediction->confidence*100) }}%</strong></div><div class="confidence-track"><div class="confidence-fill" style="width:{{ round($case->latestPrediction->confidence*100) }}%"></div></div></div>
         @endif
-        <dl class="meta-grid case-meta"><div class="meta-item"><dt>Image path and specific view</dt><dd>{{ ucwords(str_replace('_',' ',$case->images->first()?->image_path ?? $case->screening_path)) }} / {{ ucwords(str_replace('_',' ',$case->images->first()?->specific_view ?? $case->images->first()?->view_type ?? '')) }}</dd></div><div class="meta-item"><dt>Variety</dt><dd>{{ $case->variety ?: 'Not provided' }}</dd></div><div class="meta-item"><dt>Plant age</dt><dd>{{ $case->plant_age ? $case->plant_age.' '.$case->plant_age_unit : 'Not provided' }}</dd></div><div class="meta-item"><dt>Farm section</dt><dd>{{ $case->farm_section ?: 'Not provided' }}</dd></div><div class="meta-item"><dt>Banana tree codename</dt><dd>{{ $case->tree_codename ?: 'Not provided' }}</dd></div></dl>
-        @if($case->images->first()?->detected_part)<div class="detected-view"><span class="detected-view-mark" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20c8 0 15-5 16-16-8 1-15 8-16 16Z"/></svg></span><div><span>Detected image view</span><strong>{{ $case->images->first()->detected_part }}</strong><small>Identified by {{ $case->images->first()->part_detection_provider ?: 'Gemini' }} before disease classification.</small></div></div>@endif
+        <dl class="meta-grid case-meta">
+            <div class="meta-item"><dt>Farm</dt><dd>{{ $case->farmProfile?->farm_name ?: 'Not assigned' }}</dd></div>
+            <div class="meta-item"><dt>Farm section</dt><dd>{{ $case->farm_section ?: 'Not provided' }}</dd></div>
+            <div class="meta-item"><dt>Banana tree codename</dt><dd>{{ $case->tree_codename ?: 'Not provided' }}</dd></div>
+            <div class="meta-item"><dt>Variety</dt><dd>{{ $case->variety ?: 'Not provided' }}</dd></div>
+            <div class="meta-item"><dt>Plant age</dt><dd>{{ $case->plant_age ? $case->plant_age.' '.$case->plant_age_unit : 'Not provided' }}</dd></div>
+            <div class="meta-item"><dt>Detected image view</dt><dd>{{ $case->images->first()?->detected_part ?? ucwords(str_replace('_',' ',$case->images->first()?->specific_view ?? $case->images->first()?->view_type ?? $case->screening_path)) }}@if($case->images->first()?->part_detection_provider) <span class="field-help">via {{ $case->images->first()->part_detection_provider }}</span>@endif</dd></div>
+        </dl>
         @if($case->symptom_notes)<div class="case-notes"><strong>Visible symptoms reported</strong><p>{{ $case->symptom_notes }}</p></div>@endif
     </article>
 
@@ -27,7 +32,10 @@
     <article class="card card-pad" style="margin-top:18px"><h2>Add follow-up observation</h2><form class="form-stack" method="POST" action="{{ route('cases.follow-ups.store',$case) }}" enctype="multipart/form-data">@csrf
         <label class="field"><span class="field-label">Current observation</span><textarea required name="observation" maxlength="2000" class="input" placeholder="Describe visible changes since the previous record."></textarea></label>
         <label class="field"><span class="field-label">Action taken</span><textarea name="action_taken" maxlength="2000" class="input" placeholder="Record field actions, consultation, or monitoring steps."></textarea></label>
-        <div class="field-grid"><label class="field"><span class="field-label">Updated case status</span><select required name="case_status" class="input">@foreach(['open','improving','unchanged','worsening','referred','closed'] as $status)<option value="{{ $status }}">{{ ucwords($status) }}</option>@endforeach</select></label><label class="field"><span class="field-label">Optional follow-up image</span><input type="file" name="image" accept="image/jpeg,image/png,image/webp" class="input"></label><label class="field"><span class="field-label">Follow-up view</span><select name="view_type" class="input"><option value="">Select if an image is added</option><option value="follow_up_leaf">Follow-up leaf</option><option value="follow_up_whole_plant">Follow-up whole plant</option><option value="crown">Crown and upper leaves</option></select></label></div>
+        <div class="field-grid">
+            <label class="field"><span class="field-label">Updated case status</span><select required name="case_status" class="input">@foreach(['open','improving','unchanged','worsening','referred','closed'] as $status)<option value="{{ $status }}">{{ ucwords($status) }}</option>@endforeach</select></label>
+            <label class="field"><span class="field-label">Optional follow-up image</span><input type="file" name="image" accept="image/jpeg,image/png,image/webp" class="input"></label>
+        </div>
         <button class="btn btn-primary" type="submit">Save follow-up</button>
     </form></article>
     @endif

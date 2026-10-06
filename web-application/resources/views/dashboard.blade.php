@@ -26,8 +26,8 @@
 @if($user->role === 'farm_owner')
 <section class="card farm-profile-strip">
     <span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 20h18M5 20V9l7-5 7 5v11M9 20v-6h6v6"/></svg></span>
-    <div><p class="eyebrow">Farm profile</p><h2>{{ $farmProfile?->farm_name ?? 'Set up the selected farm' }}</h2><p>{{ $farmProfile ? collect([$farmProfile->municipality, $farmProfile->province])->filter()->implode(', ').' · '.$farmProfile->active_sections_count.' active sections' : 'Add farm details, sections or areas, and notification preferences.' }}</p></div>
-    <a class="btn btn-secondary" href="{{ route('farm-settings.index') }}">Manage farm settings</a>
+    <div><p class="eyebrow">Latest farm</p><h2>{{ $farmProfile?->farm_name ?? 'Add your first farm' }}</h2><p>{{ $farmProfile ? collect([$farmProfile->municipality, $farmProfile->province])->filter()->implode(', ') : 'Create a farm record to keep its details organized.' }}</p></div>
+    <a class="btn btn-secondary" href="{{ route('farm-settings.index') }}">Manage farms</a>
 </section>
 @endif
 

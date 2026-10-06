@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CaseImage;
 use App\Models\DiseaseClass;
+use App\Models\FarmProfile;
 use App\Models\FarmSection;
 use App\Models\ModelVersion;
 use App\Models\PlantCase;
@@ -18,13 +19,17 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ScreeningController extends Controller
 {
     public function create()
     {
         return view('screening.create', [
-            'farmSections' => FarmSection::query()->where('active', true)->orderBy('name')->pluck('name'),
+            'farms' => FarmProfile::query()
+                ->with(['sections' => fn ($query) => $query->where('active', true)->orderBy('name')])
+                ->orderBy('farm_name')
+                ->get(),
         ]);
     }
 
@@ -117,16 +122,21 @@ class ScreeningController extends Controller
         AuditLogger $audit
     ) {
         $data = $request->validate([
+
             'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:5120',
             'variety' => 'nullable|in:Cardava,Binangay,Tundan,Other,Unknown',
             'plant_age' => 'nullable|integer|min:1|max:3650',
             'plant_age_unit' => 'nullable|required_with:plant_age|in:weeks,months,years',
             'observed_at' => 'required|date',
-            'farm_section' => 'nullable|string|max:120',
+            'farm_profile_id' => 'nullable|integer|exists:farm_profiles,id',
+            'farm_section_id' => 'nullable|integer',
             'tree_codename' => 'nullable|string|max:120',
             'symptom_notes' => 'nullable|string|max:2000',
             'part_detection_receipt' => 'nullable|string|max:12000',
         ]);
+        $this->resolveFarmContext($data);
+        // The model receives the uploaded image directly. Capture-area metadata is
+        // assigned automatically instead of being selected by the monitoring personnel.
         $data['screening_path'] = 'auto_detected';
         $data['view_type'] = 'auto_detected';
         $data['image_path'] = 'auto_detected';
@@ -169,7 +179,7 @@ class ScreeningController extends Controller
             }
         }
 
-        // Capture metadata is guidance only; the same model and four disease classes are used for every view.
+        // Automatic image-area metadata is retained with the result and case record.
         $result['screening_path'] = $data['screening_path'];
         $result['view_type'] = $data['view_type'];
         $result['image_path'] = $data['image_path'];
@@ -208,35 +218,6 @@ class ScreeningController extends Controller
             ]);
         }
 
-        if (($result['predicted_class'] ?? 'inconclusive') === 'healthy_banana') {
-            $file = $request->file('image');
-            $imageContents = file_get_contents($file->getRealPath());
-            $imagePreview = $imageContents === false
-                ? null
-                : 'data:'.$file->getMimeType().';base64,'.base64_encode($imageContents);
-            $case = null;
-            $caseImage = null;
-
-            $audit->record('screening.healthy_result_completed', $request->user(), metadata: [
-                'screening_path' => $data['screening_path'],
-                'view_type' => $data['view_type'],
-                'image_path' => $data['image_path'],
-                'specific_view' => $data['specific_view'],
-                'detected_part' => $partResult['part'],
-                'part_detection_provider' => $partResult['provider'],
-                'case_created' => false,
-            ]);
-            $advisory = $this->advisoryFor($content, 'healthy_banana');
-
-            return view('screening.result', compact(
-                'result',
-                'data',
-                'advisory',
-                'case',
-                'caseImage',
-                'imagePreview',
-            ));
-        }
 
         $storedPath = null;
         try {
@@ -251,6 +232,7 @@ class ScreeningController extends Controller
                     'plant_age_unit' => $data['plant_age_unit'] ?? null,
                     'symptom_notes' => $data['symptom_notes'] ?? null,
                     'observed_at' => $data['observed_at'],
+                    'farm_profile_id' => $data['farm_profile_id'] ?? null,
                     'farm_section' => $data['farm_section'] ?? null,
                     'tree_codename' => $data['tree_codename'] ?? null,
                     'status' => 'open',
@@ -310,6 +292,49 @@ class ScreeningController extends Controller
         $advisory = $this->advisoryFor($content, $result['predicted_class'] ?? 'inconclusive');
 
         return view('screening.result', compact('result', 'data', 'advisory', 'case', 'caseImage'));
+    }
+
+    private function resolveFarmContext(array &$data): void
+    {
+        $farmId = $data['farm_profile_id'] ?? null;
+        $sectionId = $data['farm_section_id'] ?? null;
+        $treeCodename = $data['tree_codename'] ?? null;
+        $data['farm_section'] = null;
+
+        if (! $farmId) {
+            return;
+        }
+
+        $section = $sectionId
+            ? FarmSection::query()
+                ->whereKey($sectionId)
+                ->where('farm_profile_id', $farmId)
+                ->where('active', true)
+                ->first()
+            : null;
+
+        if ($sectionId && ! $section) {
+            throw ValidationException::withMessages([
+                'farm_section_id' => 'Choose a registered active block from the selected farm.',
+            ]);
+        }
+
+        if (! $section && $treeCodename) {
+            throw ValidationException::withMessages([
+                'farm_section_id' => 'Choose a block before choosing a plant codename.',
+            ]);
+        }
+
+        if (! $section) {
+            return;
+        }
+
+        $data['farm_section'] = $section->name;
+        if ($treeCodename && ! in_array($treeCodename, $section->plant_codenames ?? [], true)) {
+            throw ValidationException::withMessages([
+                'tree_codename' => 'Choose a registered plant codename from the selected block.',
+            ]);
+        }
     }
 
     private function advisoryFor(PrototypeContentService $content, string $predictedClass): array

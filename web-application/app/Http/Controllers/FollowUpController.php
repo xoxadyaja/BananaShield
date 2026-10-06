@@ -19,7 +19,6 @@ class FollowUpController extends Controller
             'action_taken' => 'nullable|string|max:2000',
             'case_status' => 'required|in:open,improving,unchanged,worsening,referred,closed',
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
-            'view_type' => 'nullable|required_with:image|in:follow_up_leaf,follow_up_whole_plant,crown',
         ]);
 
         $imageSize = $request->hasFile('image') ? getimagesize($request->file('image')->getRealPath()) : null;
@@ -48,7 +47,7 @@ class FollowUpController extends Controller
                 CaseImage::create([
                     'case_id' => $case->id,
                     'follow_up_id' => $followUp->id,
-                    'view_type' => $data['view_type'],
+                    'view_type' => 'unspecified',
                     'image_type' => 'follow_up',
                     'storage_disk' => 'local',
                     'storage_path' => $path,

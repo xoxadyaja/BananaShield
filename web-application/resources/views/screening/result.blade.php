@@ -5,9 +5,6 @@
 <div class="alert alert-success"><span><strong>Transparent mock mode:</strong> this demonstration output was generated locally because a trained, validated model file is not active. The case workflow and safeguards remain functional.</span></div>
 @endif
 @if($isDemo ?? false)<div class="alert alert-success"><span><strong>Sample result:</strong> this preview was not generated from an upload and was not saved as a case.</span></div>@endif
-@if(!($isDemo ?? false) && !$case && ($result['predicted_class'] ?? '') === 'healthy_banana')
-<div class="alert alert-success"><span><strong>Healthy screening—not added to reports.</strong> No farm case was created. Only disease or inconclusive results are saved for monitoring and follow-up.</span></div>
-@endif
 
 <div class="hero-bar"><div><p class="eyebrow">{{ ($isDemo ?? false) ? 'Demonstration preview' : ($case ? 'Screening complete and case saved' : 'Screening complete') }}</p><h1 class="page-title">Preliminary visual-screening result</h1><p class="page-copy">Interpret the model output together with image quality, confidence, advisory guidance, and the diagnostic limitation.</p></div><a class="btn btn-secondary" href="{{ route('screenings.create') }}">New screening</a></div>
 
@@ -18,25 +15,16 @@
         <p class="eyebrow" style="margin-top:26px">Supported model category</p>
         <h2 class="result-title">{{ $result['display_label'] }}</h2>
         <p class="result-message">{{ $result['message'] }}</p>
-        <div class="confidence"><div class="confidence-head"><span>Model confidence</span><strong>{{ round($result['confidence'] * 100) }}%</strong></div><div class="confidence-track"><div class="confidence-fill" style="width:{{ max(0,min(100,round($result['confidence']*100))) }}%"></div></div><p class="field-help" style="margin-top:8px">Configured inconclusive threshold: {{ round($result['confidence_threshold'] * 100) }}%. Confidence is relative model certainty, not proof that disease is present.</p></div>
-        <dl class="meta-grid">
-            <div class="meta-item"><dt>Main image path</dt><dd>{{ ucwords(str_replace('_',' ',$result['image_path'] ?? $result['screening_path'])) }}</dd></div>
-            <div class="meta-item"><dt>Specific view</dt><dd>{{ ucwords(str_replace('_',' ',$result['specific_view'] ?? $result['view_type'])) }}</dd></div>
-            <div class="meta-item"><dt>Image quality</dt><dd>{{ ucwords(str_replace('_',' ',$result['quality_status'])) }}</dd></div>
-            <div class="meta-item"><dt>Model registry</dt><dd>{{ $result['architecture'] }} - {{ $result['model_version'] }}</dd></div>
-        </dl>
-        <div class="notice notice-amber" style="margin-top:22px"><span>{{ $result['disclaimer'] }} It is not a severity assessment, laboratory confirmation, or treatment authorization.</span></div>
+        <div class="confidence"><div class="confidence-head"><span>Probability</span><strong>{{ round($result['confidence'] * 100) }}%</strong></div><div class="confidence-track"><div class="confidence-fill" style="width:{{ max(0,min(100,round($result['confidence']*100))) }}%"></div></div><p class="field-help" style="margin-top:8px">Configured inconclusive threshold: {{ round($result['confidence_threshold'] * 100) }}%. Probability reflects the model's relative certainty, not proof that disease is present.</p></div>
         @if(!($isDemo ?? false) && $case)<div class="result-case-link"><div><strong>Farm case {{ $case->case_number }}</strong><small>Saved privately for monitoring, review, and follow-up.</small></div><a class="btn btn-primary" href="{{ route('cases.show',$case) }}">Open case record</a></div>@endif
     </section>
     <figure class="result-visual result-photo">
-        @if(!($isDemo ?? false) && !$case && ($imagePreview ?? null))
-            <img alt="Submitted banana plant image" src="{{ $imagePreview }}">
-        @elseif(!($isDemo ?? false) && $case && isset($caseImage))
+        @if(!($isDemo ?? false) && $case && isset($caseImage))
             <img alt="Submitted banana plant image" src="{{ route('cases.images.show',[$case,$caseImage]) }}">
         @else
             <img alt="Sample banana leaf visual" src="{{ asset('images/banana-field.svg') }}">
         @endif
-        <figcaption>{{ !($isDemo ?? false) && !$case ? 'Submitted image shown for this screening only; it was not stored as a farm case.' : 'Submitted image shown for record review. BananaShield does not claim lesion segmentation or infected-area measurement.' }}</figcaption>
+        <figcaption>{{ ($isDemo ?? false) ? 'Sample image for this demonstration.' : 'Submitted image shown for record review. BananaShield does not claim lesion segmentation or infected-area measurement.' }}</figcaption>
     </figure>
 </article>
 

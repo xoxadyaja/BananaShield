@@ -9,11 +9,6 @@
     <a class="btn btn-secondary" href="{{ route('dashboard') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m14 6-6 6 6 6"/></svg>Back to dashboard</a>
 </div>
 
-<div class="analytics-warning">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3 4 7v5c0 5 3 8 8 10 5-2 8-5 8-10V7z"/><path d="M9 12h6"/></svg>
-    <div><strong>Monitoring access only.</strong> Accounts created here cannot receive Farm Owner or System Administrator permissions.</div>
-</div>
-
 <section class="card card-pad account-management-card account-module">
     <div class="section-head settings-section-head">
         <div><h2>Monitoring personnel accounts</h2><p class="field-help">New accounts are activated immediately and can sign in with their password.</p></div>

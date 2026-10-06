@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CaseImage;
 use App\Models\FarmSection;
+use App\Models\FarmProfile;
 use App\Models\PlantCase;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
@@ -15,7 +16,10 @@ class CaseController extends Controller
 {
     public function index(Request $request)
     {
+        $farms = FarmProfile::query()->orderBy('farm_name')->get();
         $filters = $request->validate([
+            'farm' => ['nullable', 'string', Rule::in(array_merge(['__unassigned'], $farms->modelKeys()))],
+            'outcome' => ['nullable', Rule::in(['healthy', 'disease', 'inconclusive', 'unavailable'])],
             'q' => 'nullable|string|max:120',
             'block' => 'nullable|string|max:120',
             'status' => ['nullable', Rule::in(['open', 'improving', 'unchanged', 'worsening', 'referred', 'closed'])],
@@ -23,6 +27,8 @@ class CaseController extends Controller
             'decision' => ['nullable', Rule::in(['conclusive', 'inconclusive'])],
         ]);
 
+        $selectedFarm = $filters['farm'] ?? '';
+        $selectedOutcome = $filters['outcome'] ?? '';
         $search = trim($filters['q'] ?? '');
         $selectedBlock = trim($filters['block'] ?? '');
         $selectedStatus = $filters['status'] ?? '';
@@ -30,6 +36,11 @@ class CaseController extends Controller
         $selectedDecision = $filters['decision'] ?? '';
         $visibleCases = PlantCase::query()->visibleTo($request->user());
         $recordTotal = (clone $visibleCases)->count();
+        if ($selectedFarm === '__unassigned') {
+            $visibleCases->whereNull('farm_profile_id');
+        } elseif ($selectedFarm !== '') {
+            $visibleCases->where('farm_profile_id', $selectedFarm);
+        }
 
         $reportedBlocks = (clone $visibleCases)
             ->selectRaw('farm_section, COUNT(*) as reports_count')
@@ -48,6 +59,8 @@ class CaseController extends Controller
         }
 
         $blocks = FarmSection::query()
+            ->when($selectedFarm === '__unassigned', fn ($query) => $query->whereRaw('1 = 0'))
+            ->when($selectedFarm !== '' && $selectedFarm !== '__unassigned', fn ($query) => $query->where('farm_profile_id', $selectedFarm))
             ->orderByDesc('active')
             ->orderBy('name')
             ->get()
@@ -90,7 +103,7 @@ class CaseController extends Controller
         }
 
         $query = (clone $visibleCases)
-            ->with(['latestPrediction', 'submitter'])
+            ->with(['latestPrediction', 'submitter', 'farmProfile'])
             ->withCount('followUps');
 
         if ($selectedBlock === '__unassigned') {
@@ -135,9 +148,16 @@ class CaseController extends Controller
             });
         }
 
+        if ($selectedOutcome !== '') {
+            $query->outcome($selectedOutcome);
+        }
+
         $cases = $query->latest('observed_at')->paginate(12)->withQueryString();
 
         return view('cases.index', compact(
+            'farms',
+            'selectedFarm',
+            'selectedOutcome',
             'blocks',
             'cases',
             'recordTotal',
@@ -152,7 +172,7 @@ class CaseController extends Controller
     public function show(Request $request, PlantCase $case)
     {
         $this->authorizeCase($request, $case);
-        $case->load(['submitter', 'reviewer', 'images', 'latestPrediction.modelVersion', 'followUps.creator']);
+        $case->load(['submitter', 'reviewer', 'farmProfile', 'images', 'latestPrediction.modelVersion', 'followUps.creator']);
         return view('cases.show', compact('case'));
     }
 

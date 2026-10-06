@@ -1,173 +1,130 @@
 @extends('layouts.app')
-@section('title','Operational analytics - BananaShield')
-
+@section('title', 'Farm analytics - BananaShield')
+@section('content')
 @php
-    $trendValues = array_column($analytics['trend'], 'value');
-    $trendMax = max(1, ...$trendValues);
-    $trendTotal = array_sum($trendValues);
-    $chartWidth = 640;
-    $chartHeight = 220;
-    $chartLeft = 28;
-    $chartRight = 20;
-    $chartTop = 20;
-    $chartBottom = 36;
-    $chartFloor = $chartHeight - $chartBottom;
-    $plotWidth = $chartWidth - $chartLeft - $chartRight;
-    $plotHeight = $chartFloor - $chartTop;
-    $trendPoints = [];
-    foreach ($analytics['trend'] as $index => $month) {
-        $x = $chartLeft + (($plotWidth / max(1, count($analytics['trend']) - 1)) * $index);
-        $y = $chartFloor - (($month['value'] / $trendMax) * $plotHeight);
-        $trendPoints[] = ['x' => round($x, 2), 'y' => round($y, 2), 'month' => $month];
-    }
-    $linePoints = collect($trendPoints)->map(fn ($point) => $point['x'].','.$point['y'])->implode(' ');
-    $areaPoints = $chartLeft.','.$chartFloor.' '.$linePoints.' '.($chartWidth - $chartRight).','.$chartFloor;
-
-    $pathTotal = array_sum($analytics['paths']);
-    $leafShare = $pathTotal ? round(($analytics['paths']['leaf'] / $pathTotal) * 100, 1) : 0;
-    $classTotal = array_sum($analytics['classes']);
-    $classMax = max(1, ...array_values($analytics['classes']));
-    $statusTotal = array_sum($analytics['statuses']);
-    $statusTones = ['open' => 'forest', 'improving' => 'leaf', 'unchanged' => 'slate', 'worsening' => 'danger', 'referred' => 'gold', 'closed' => 'soil'];
+    $trendMax = max(1, ...array_column($analytics['trend'], 'total'));
+    $trendTotal = array_sum(array_column($analytics['trend'], 'total'));
+    $total = $analytics['summary']['total'];
+    $outcomes = ['healthy' => 'Healthy', 'disease' => 'Disease indication', 'inconclusive' => 'Inconclusive', 'unavailable' => 'Unavailable'];
 @endphp
 
-@section('content')
-<div class="hero-bar analytics-hero">
+<div class="hero-bar">
     <div>
-        <p class="eyebrow">Analytics Dashboard</p>
-        <h1 class="page-title">Farm activity at a glance.</h1>
-        <p class="page-copy">Track submitted cases, preliminary outputs, capture paths, and follow-up status across BananaShield.</p>
+        <h1 class="page-title">Farm analytics</h1>
+        <p class="page-copy">Review healthy screenings, disease indications, and follow-up activity across your recorded farm reports.</p>
     </div>
-    <span class="period-pill"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3v3M18 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z"/></svg>Updated {{ now()->format('M j, Y') }}</span>
+    <a class="btn btn-secondary" href="{{ route('monitoring', $reportParams) }}">View reports</a>
 </div>
 
-<div class="analytics-warning">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 17h.01"/></svg>
-    <div><strong>Operational records only.</strong> These summaries represent BananaShield submissions and are not official incidence, prevalence, outbreak, or epidemiological-surveillance statistics.</div>
-</div>
+<form class="analytics-filter" method="GET" action="{{ route('analytics') }}">
+    <label class="field">
+        <span class="field-label">Farm</span>
+        <select class="input" name="farm">
+            <option value="">All farms</option>
+            @foreach($farms as $farm)
+                <option value="{{ $farm->id }}" @selected((string) $farm->id === $selectedFarm)>{{ $farm->farm_name }}</option>
+            @endforeach
+            <option value="__unassigned" @selected($selectedFarm === '__unassigned')>Farm not assigned</option>
+        </select>
+    </label>
+    <button class="btn btn-primary" type="submit">Apply filter</button>
+    @if($selectedFarm !== '')<a class="analytics-reset" href="{{ route('analytics') }}">Clear filter</a>@endif
+    <p class="analytics-scope"><strong>{{ $selectedFarmName }}</strong><span>All-time totals · Updated {{ now()->format('M j, Y') }}</span></p>
+</form>
 
-<section class="metric-grid" aria-label="Key analytics metrics">
+<section class="analytics-summary" aria-label="Recorded screening totals">
     @foreach($analytics['metrics'] as $metric)
-        <a class="card metric-card metric-card-link metric-card-{{ $metric['tone'] }}" href="{{ $metric['href'] }}" aria-label="{{ $metric['cta'] }}: {{ number_format($metric['value']) }}">
-            <div class="metric-card-top">
-                <span>{{ $metric['label'] }}</span>
-                <span class="metric-symbol" aria-hidden="true">
-                    @switch($loop->index)
-                        @case(0)<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h14v16H5zM8 8h8M8 12h6M8 16h4"/></svg>@break
-                        @case(1)<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>@break
-                        @case(2)<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 17h.01"/></svg>@break
-                        @default<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 20V5h10l-1 4 1 4H5M5 3v18"/></svg>
-                    @endswitch
-                </span>
-            </div>
+        <a class="analytics-summary-item analytics-tone-{{ $metric['tone'] }}" href="{{ $metric['href'] }}">
+            <span>{{ $metric['label'] }}</span>
             <strong>{{ number_format($metric['value']) }}</strong>
             <small>{{ $metric['hint'] }}</small>
-            <span class="metric-card-cta">{{ $metric['cta'] }}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M5 12h14M14 7l5 5-5 5"/></svg></span>
+            <span class="analytics-summary-link">View reports <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M5 12h14M14 7l5 5-5 5"/></svg></span>
         </a>
     @endforeach
 </section>
+@if($analytics['summary']['unavailable'] > 0)
+    <p class="analytics-missing">{{ $analytics['summary']['unavailable'] }} recorded screening(s) have no available result and are included in the total. <a href="{{ route('monitoring', $reportParams + ['outcome' => 'unavailable']) }}">View these reports</a></p>
+@endif
 
-<section class="analytics-primary-grid">
-    <article class="card chart-card trend-card">
-        <div class="chart-heading">
-            <div><p class="chart-kicker">Last six months</p><h2>Submission activity</h2></div>
-            <span class="chart-total"><b>{{ $trendTotal }}</b> cases</span>
-        </div>
-        <figure class="trend-figure">
-            <svg class="trend-chart" viewBox="0 0 {{ $chartWidth }} {{ $chartHeight }}" role="img" aria-label="Monthly case submissions over the last six months">
-                <defs>
-                    <linearGradient id="trend-area" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#3e8b60" stop-opacity=".3"/>
-                        <stop offset="100%" stop-color="#3e8b60" stop-opacity=".02"/>
-                    </linearGradient>
-                </defs>
-                @foreach([20, 61, 102, 143, 184] as $gridY)
-                    <line class="trend-grid-line" x1="{{ $chartLeft }}" y1="{{ $gridY }}" x2="{{ $chartWidth - $chartRight }}" y2="{{ $gridY }}"/>
-                @endforeach
-                <polygon class="trend-area" points="{{ $areaPoints }}"/>
-                <polyline class="trend-line" points="{{ $linePoints }}"/>
-                @foreach($trendPoints as $point)
-                    <g class="trend-point">
-                        <title>{{ $point['month']['full_label'] }}: {{ $point['month']['value'] }} submissions</title>
-                        <circle cx="{{ $point['x'] }}" cy="{{ $point['y'] }}" r="5"/>
-                        @if($point['month']['value'] > 0)<text x="{{ $point['x'] }}" y="{{ max(14, $point['y'] - 12) }}" text-anchor="middle">{{ $point['month']['value'] }}</text>@endif
-                    </g>
-                @endforeach
-            </svg>
-            <figcaption class="trend-labels">
-                @foreach($analytics['trend'] as $month)<span title="{{ $month['full_label'] }}">{{ $month['label'] }}</span>@endforeach
-            </figcaption>
-            @if($trendTotal === 0)<p class="chart-empty-note">New submissions will appear here as a monthly trend.</p>@endif
-        </figure>
-    </article>
+@if($total === 0)
+    <div class="analytics-empty">
+        <h2>No screenings recorded{{ $selectedFarm !== '' ? ' for this farm' : '' }} yet</h2>
+        <p>Completed screenings, including healthy results, will appear here once monitoring personnel save them.</p>
+    </div>
+@endif
 
-    <article class="card chart-card capture-card">
-        <div class="chart-heading">
-            <div><p class="chart-kicker">Image workflow</p><h2>Capture path mix</h2></div>
+<div class="analytics-panels">
+    <section class="analytics-panel" aria-labelledby="submission-activity-title">
+        <header class="analytics-panel-heading">
+            <div><h2 id="submission-activity-title">Submission activity</h2><p>Last six months, by date recorded</p></div>
+            <span>{{ number_format($trendTotal) }} reports</span>
+        </header>
+        <div class="analytics-key">
+            @foreach($outcomes as $key => $label)<span><i class="outcome-{{ $key }}" aria-hidden="true"></i>{{ $label }}</span>@endforeach
         </div>
-        <div class="donut-layout">
-            <div class="donut-chart" role="img" aria-label="{{ $pathTotal ? $leafShare.' percent leaf screening and '.(100 - $leafShare).' percent whole-plant screening' : 'No capture path data yet' }}" style="--donut-fill: {{ $pathTotal ? 'conic-gradient(#2f7650 0 '.$leafShare.'%, #e5ab3d '.$leafShare.'% 100%)' : '#edf0ec' }}">
-                <div><strong>{{ $pathTotal }}</strong><span>total cases</span></div>
-            </div>
-            <div class="chart-legend capture-legend">
-                @foreach($analytics['paths'] as $label => $value)
-                    @php
-                        $share = $pathTotal ? round(($value / $pathTotal) * 100) : 0;
-                    @endphp
-                    <div class="legend-row">
-                        <span class="legend-dot {{ $loop->first ? 'legend-leaf' : 'legend-gold' }}"></span>
-                        <div><b>{{ ucwords(str_replace('_', ' ', $label)) }}</b><small>{{ $share }}% of submissions</small></div>
-                        <strong>{{ $value }}</strong>
+        <div class="analytics-months">
+            @foreach($analytics['trend'] as $month)
+                <div class="analytics-month">
+                    <span class="analytics-month-label">{{ $month['label'] }}</span>
+                    <div class="analytics-month-track" role="img" aria-label="{{ $month['full_label'] }}: {{ $month['total'] }} reports; {{ $month['healthy'] }} healthy, {{ $month['disease'] }} disease indications, {{ $month['inconclusive'] }} inconclusive, {{ $month['unavailable'] }} unavailable">
+                        @foreach($outcomes as $key => $label)
+                            @if($month[$key] > 0)<span class="outcome-{{ $key }}" style="width: {{ ($month[$key] / $trendMax) * 100 }}%" title="{{ $label }}: {{ $month[$key] }}"></span>@endif
+                        @endforeach
                     </div>
-                @endforeach
-            </div>
-        </div>
-    </article>
-</section>
-
-<section class="analytics-secondary-grid">
-    <article class="card chart-card class-chart-card">
-        <div class="chart-heading">
-            <div><p class="chart-kicker">Preliminary model output</p><h2>Class distribution</h2></div>
-            <span class="chart-total"><b>{{ $classTotal }}</b> predictions</span>
-        </div>
-        <div class="analytics-bars" aria-label="Preliminary class distribution">
-            @foreach($analytics['classes'] as $label => $value)
-                @php
-                    $percent = $classTotal ? round(($value / $classTotal) * 100) : 0;
-                @endphp
-                <div class="analytics-bar-row tone-{{ ($loop->index % 5) + 1 }}">
-                    <div class="analytics-bar-label"><span>{{ $label }}</span><strong>{{ $value }} <small>{{ $percent }}%</small></strong></div>
-                    <div class="analytics-bar-track" role="progressbar" aria-label="{{ $label }}" aria-valuemin="0" aria-valuemax="{{ $classMax }}" aria-valuenow="{{ $value }}"><i style="width: {{ $value ? max(6, ($value / $classMax) * 100) : 0 }}%"></i></div>
+                    <strong>{{ $month['total'] }}</strong>
                 </div>
             @endforeach
         </div>
-    </article>
+        @if($trendTotal === 0)<p class="analytics-panel-note">No submissions in the last six months.</p>@endif
+    </section>
 
-    <article class="card chart-card workflow-card">
-        <div class="chart-heading">
-            <div><p class="chart-kicker">Current workflow</p><h2>Case status</h2></div>
-            <span class="chart-total"><b>{{ $statusTotal }}</b> cases</span>
-        </div>
-        <div class="status-stack" role="img" aria-label="Distribution of current case statuses">
-            @if($statusTotal)
-                @foreach($analytics['statuses'] as $label => $value)
-                    @if($value > 0)<span class="status-segment status-{{ $statusTones[$label] ?? 'slate' }}" style="width: {{ ($value / $statusTotal) * 100 }}%" title="{{ ucwords($label) }}: {{ $value }}"></span>@endif
-                @endforeach
-            @else
-                <span class="status-segment status-empty" style="width:100%"></span>
-            @endif
-        </div>
-        <div class="status-legend">
-            @foreach($analytics['statuses'] as $label => $value)
-                @php
-                    $share = $statusTotal ? round(($value / $statusTotal) * 100) : 0;
-                @endphp
-                <div><span class="legend-dot status-{{ $statusTones[$label] ?? 'slate' }}"></span><p><b>{{ ucwords($label) }}</b><small>{{ $value }} case{{ $value === 1 ? '' : 's' }} · {{ $share }}%</small></p></div>
+    <section class="analytics-panel" aria-labelledby="class-distribution-title">
+        <header class="analytics-panel-heading"><div><h2 id="class-distribution-title">Screening results</h2><p>Latest result per report · All time</p></div></header>
+        <div class="analytics-distribution">
+            @foreach($analytics['classes'] as $class)
+                @if($class['tone'] !== 'unavailable' || $class['value'] > 0)
+                    @php $share = $total ? ($class['value'] / $total) * 100 : 0; @endphp
+                    <div>
+                        <div class="analytics-distribution-label"><span>{{ $class['label'] }}</span><strong>{{ $class['value'] }} <small>{{ round($share, 1) }}%</small></strong></div>
+                        <div class="analytics-distribution-track" aria-hidden="true"><span class="outcome-{{ $class['tone'] }}" style="width: {{ $share }}%"></span></div>
+                    </div>
+                @endif
             @endforeach
         </div>
-    </article>
+    </section>
+</div>
+
+<section class="analytics-panel analytics-farms" aria-labelledby="farm-breakdown-title">
+    <header class="analytics-panel-heading"><div><h2 id="farm-breakdown-title">Reports by farm</h2><p>Compare recorded results, then open a farm's reports.</p></div></header>
+    @if($analytics['farmRows']->isEmpty())
+        <p class="analytics-panel-note">No registered farms yet. <a href="{{ route('farm-settings.index') }}">Manage farms</a> to register one.</p>
+    @else
+        <div class="analytics-table-wrap" tabindex="0" role="region" aria-label="Screening counts by farm">
+            <table class="analytics-farm-table">
+                <thead><tr><th scope="col">Farm</th><th scope="col">Total</th><th scope="col">Healthy</th><th scope="col">Disease indications</th><th scope="col">Inconclusive</th>@if($analytics['summary']['unavailable'])<th scope="col">Unavailable</th>@endif</tr></thead>
+                <tbody>
+                    @foreach($analytics['farmRows'] as $farm)
+                        <tr>
+                            <th scope="row"><a href="{{ $farm['href'] }}">{{ $farm['name'] }}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a><small>{{ $farm['location'] ?: 'Location not provided' }}</small></th>
+                            <td><strong>{{ $farm['total'] }}</strong></td><td>{{ $farm['healthy'] }}</td><td>{{ $farm['disease'] }}</td><td>{{ $farm['inconclusive'] }}</td>@if($analytics['summary']['unavailable'])<td>{{ $farm['unavailable'] }}</td>@endif
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
 </section>
 
-<p class="analytics-footnote">Charts update automatically from saved BananaShield records. Preliminary classifications and user-entered statuses must not be interpreted as confirmed diagnoses or official disease statistics.</p>
+<section class="analytics-panel analytics-workflow" aria-labelledby="case-status-title">
+    <header class="analytics-panel-heading">
+        <div><h2 id="case-status-title">Case status</h2><p>User-recorded follow-up status, separate from the screening result</p></div>
+        <a href="{{ route('monitoring', $reportParams + ['review' => 'pending']) }}">{{ $analytics['pendingReview'] }} awaiting owner review</a>
+    </header>
+    <div class="analytics-status-list">
+        @foreach($analytics['statuses'] as $status => $count)
+            <a href="{{ route('monitoring', $reportParams + ['status' => $status]) }}"><span>{{ ucfirst($status) }}</span><strong>{{ $count }}</strong></a>
+        @endforeach
+    </div>
+</section>
+<p class="analytics-panel-note analytics-footnote">These are saved screening records, not unique plant counts or confirmed diagnoses. Repeated screenings count separately. Healthy results are preliminary; recorded status changes do not establish treatment effectiveness.</p>
 @endsection

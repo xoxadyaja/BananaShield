@@ -34,9 +34,10 @@
             <label class="field"><span class="field-label">Observation date</span><input required type="date" name="observed_at" value="{{ old('observed_at', date('Y-m-d')) }}" class="input"></label>
             <label class="field"><span class="field-label">Approximate plant age</span><input type="number" min="1" max="3650" name="plant_age" value="{{ old('plant_age') }}" class="input" placeholder="Example: 8"></label>
             <label class="field"><span class="field-label">Age unit</span><select name="plant_age_unit" class="input"><option value="">Not provided</option><option value="weeks" @selected(old('plant_age_unit')==='weeks')>Weeks</option><option value="months" @selected(old('plant_age_unit')==='months')>Months</option><option value="years" @selected(old('plant_age_unit')==='years')>Years</option></select></label>
-            <label class="field"><span class="field-label">Farm section</span><input name="farm_section" value="{{ old('farm_section') }}" maxlength="120" class="input" list="farm-section-options" placeholder="Example: North Block A"><datalist id="farm-section-options">@foreach($farmSections as $section)<option value="{{ $section }}">@endforeach</datalist><span class="field-help" style="display:block;margin-top:8px">Choose a configured farm section or enter another operational label.</span></label>
-            <label class="field"><span class="field-label">Banana tree codename</span><input name="tree_codename" value="{{ old('tree_codename') }}" maxlength="120" class="input" placeholder="Example: BA-T014" autocomplete="off"><span class="field-help" style="display:block;margin-top:8px">Add the tag or unique field name used to identify this specific banana tree.</span></label>
-            <label class="field"><span class="field-label">Visible symptoms</span><textarea name="symptom_notes" maxlength="2000" class="input" placeholder="Describe spots, yellowing, wilting, drying, stunted growth, or abnormal leaf arrangement.">{{ old('symptom_notes') }}</textarea></label>
+            <label class="field"><span class="field-label">Farm <small>Registered farms only</small></span><select id="farm-profile-select" name="farm_profile_id" class="input" @disabled($farms->isEmpty()) @required($farms->isNotEmpty())><option value="">{{ $farms->isEmpty() ? 'No registered farms available' : 'Select a farm' }}</option>@foreach($farms as $farm)<option value="{{ $farm->id }}" @selected((string) old('farm_profile_id') === (string) $farm->id)>{{ $farm->farm_name }}{{ $farm->municipality ? ' — '.$farm->municipality : '' }}</option>@endforeach</select><small class="field-help">Choose the farm where this screening was recorded.</small></label>
+            <label class="field"><span class="field-label">Farm section or block <small>Registered blocks only</small></span><select id="farm-section-select" name="farm_section_id" class="input" disabled><option value="">Choose a farm first</option></select><small class="field-help">Only blocks belonging to the selected farm are shown.</small></label>
+            <label class="field"><span class="field-label">Plant codename <small>Registered codenames only</small></span><select id="plant-codename-select" name="tree_codename" class="input" disabled><option value="">Choose a block first</option></select><small class="field-help">Only plant codenames registered in the selected block are shown.</small></label>
+            <label class="field field-full"><span class="field-label">Visible observations <span class="field-help">Optional</span></span><textarea name="symptom_notes" class="input" maxlength="2000" placeholder="Describe only what you can see, such as yellowing, spots, or wilting.">{{ old('symptom_notes') }}</textarea></label>
         </div>
         <div class="wizard-actions"><button class="btn btn-secondary" type="button" data-back="1">Back</button><button class="btn btn-primary" type="submit">Run disease screening</button></div>
     </section>
@@ -62,7 +63,13 @@ const detectedPart=document.getElementById('detected-part');
 const detectionActions=document.getElementById('part-detection-actions');
 const detectionReceipt=document.getElementById('part-detection-receipt');
 const continueButton=document.getElementById('continue-to-context');
+const farmSelect=document.getElementById('farm-profile-select');
+const blockSelect=document.getElementById('farm-section-select');
+const plantSelect=document.getElementById('plant-codename-select');
 const detectionUrl=@json(route('screenings.detect-part'));
+const farmDirectory=@json($farms->mapWithKeys(fn ($farm) => [(string) $farm->id => $farm->sections->map(fn ($section) => ['id' => $section->id, 'name' => $section->name, 'codenames' => $section->plant_codenames ?? []])->values()]));
+const selectedBlock=@json(old('farm_section_id'));
+const selectedPlant=@json(old('tree_codename'));
 const panels=[...document.querySelectorAll('.wizard-panel')];
 const steps=[...document.querySelectorAll('.step')];
 const lines=[...document.querySelectorAll('.step-line')];
@@ -185,6 +192,28 @@ function showStep(number){
     lines.forEach(line=>line.classList.toggle('completed',Number(line.dataset.line)<number));
     window.scrollTo({top:document.querySelector('.stepper').offsetTop-95,behavior:'smooth'});
 }
+
+function setOptions(select,options,placeholder,selected=''){
+    select.replaceChildren(new Option(placeholder,''));
+    options.forEach(option=>select.add(new Option(option.label,option.value,false,String(option.value)===String(selected))));
+    select.disabled=options.length===0;
+}
+
+function syncPlants(selected=''){
+    const block=(farmDirectory[farmSelect?.value]||[]).find(item=>String(item.id)===String(blockSelect?.value));
+    const plants=(block?.codenames||[]).map(codename=>({value:codename,label:codename}));
+    setOptions(plantSelect,plants,block?(plants.length?'Select a plant codename (optional)':'No plant codenames registered'):'Choose a block first',selected);
+}
+
+function syncBlocks(selected='',plant=''){
+    const blocks=farmDirectory[farmSelect?.value]||[];
+    setOptions(blockSelect,blocks.map(block=>({value:block.id,label:block.name})),farmSelect?.value?(blocks.length?'Select a block (optional)':'No registered blocks in this farm'):'Choose a farm first',selected);
+    syncPlants(plant);
+}
+
+farmSelect?.addEventListener('change',()=>syncBlocks());
+blockSelect?.addEventListener('change',()=>syncPlants());
+if(farmSelect?.value) syncBlocks(selectedBlock,selectedPlant);
 
 document.querySelectorAll('[data-image-picker]').forEach(button=>button.addEventListener('click',()=>openImagePicker(button.dataset.imagePicker)));
 document.querySelectorAll('[data-next]').forEach(button=>button.addEventListener('click',()=>{

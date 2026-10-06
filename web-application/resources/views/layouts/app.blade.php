@@ -42,11 +42,11 @@
                     <a class="{{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 11 12 4l9 7v9H3z"/><path d="M9 20v-6h6v6"/></svg><span>Dashboard</span></a>
                     @if($operational)
                         @if(auth()->user()->canSubmitScreenings())<a class="{{ request()->routeIs('screenings.*') ? 'active' : '' }}" href="{{ route('screenings.create') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg><span>AI Screening</span></a>@endif
-                        <a class="{{ request()->routeIs('monitoring','cases.*') ? 'active' : '' }}" href="{{ route('monitoring') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg><span>Monitoring &amp; Reports</span></a>
+                        <a class="{{ request()->routeIs('monitoring','cases.*') ? 'active' : '' }}" href="{{ route('monitoring') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg><span>Reports</span></a>
                     @endif
                     @if(auth()->user()->role === 'farm_owner')
                         <a class="{{ request()->routeIs('analytics') ? 'active' : '' }}" href="{{ route('analytics') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analytics</span></a>
-                        <a class="{{ request()->routeIs('farm-settings.*') ? 'active' : '' }}" href="{{ route('farm-settings.index') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h16M7 3v8M4 17h16M16 13v8"/></svg><span>Farm Profile &amp; Settings</span></a>
+                        <a class="{{ request()->routeIs('farm-settings.*') ? 'active' : '' }}" href="{{ route('farm-settings.index') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h16M7 3v8M4 17h16M16 13v8"/></svg><span>Manage Farms</span></a>
                         <a class="{{ request()->routeIs('accounts.*') ? 'active' : '' }}" href="{{ route('accounts.index') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2-7 6-7s6 3 6 7M18 8v6M15 11h6"/></svg><span>Manage Accounts</span></a>
                     @endif
                     @if(auth()->user()->role === 'system_administrator')
@@ -76,7 +76,7 @@
                 <a class="{{ request()->routeIs('monitoring','cases.*') ? 'active' : '' }}" href="{{ route('monitoring') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 5h16v14H4z"/></svg>Cases</a>
                 @if(auth()->user()->role === 'farm_owner')
                     <a class="{{ request()->routeIs('analytics') ? 'active' : '' }}" href="{{ route('analytics') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20V10M10 20V4M16 20v-7"/></svg>Analytics</a>
-                    <a class="{{ request()->routeIs('farm-settings.*') ? 'active' : '' }}" href="{{ route('farm-settings.index') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h16M7 3v8M4 17h16M16 13v8"/></svg>Farm</a>
+                    <a class="{{ request()->routeIs('farm-settings.*') ? 'active' : '' }}" href="{{ route('farm-settings.index') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h16M7 3v8M4 17h16M16 13v8"/></svg>Farms</a>
                     <a class="{{ request()->routeIs('accounts.*') ? 'active' : '' }}" href="{{ route('accounts.index') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2-7 6-7s6 3 6 7M18 8v6M15 11h6"/></svg>Accounts</a>
                 @else<a href="{{ route('advisories') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h14v16H5z"/></svg>Advisories</a>@endif
             @else

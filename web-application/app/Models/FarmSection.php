@@ -12,6 +12,7 @@ class FarmSection extends Model
     {
         return [
             'area_hectares' => 'decimal:2',
+            'plant_codenames' => 'array',
             'active' => 'boolean',
         ];
     }

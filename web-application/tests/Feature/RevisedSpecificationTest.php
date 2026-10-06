@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\CaseImage;
+use App\Models\FarmProfile;
+use App\Models\FarmSection;
 use App\Models\PlantCase;
 use App\Models\Prediction;
 use App\Models\User;
@@ -72,22 +74,19 @@ class RevisedSpecificationTest extends TestCase
         $this->actingAs($owner)->get('/analytics')
             ->assertOk()
             ->assertSee('Submission activity')
-            ->assertSee('Capture path mix')
-            ->assertSee('Class distribution')
+            ->assertSee('Reports by farm')
+            ->assertSee('Screening results')
             ->assertSee('Case status');
         $this->actingAs($owner)->get('/screenings/new')->assertForbidden();
         $this->actingAs($owner)->get('/dashboard')->assertOk()->assertSee('Case review and monitoring')->assertDontSee('Start new screening');
         $this->actingAs($monitor)->get('/screenings/new')
             ->assertOk()
-            ->assertSee('Choose the main image path')
-            ->assertSee('Where are the symptoms most visible?')
-            ->assertSee('Leaf Underside')
-            ->assertSee('Pseudostem &amp; Base', false)
-            ->assertSee('Capture Guide')
-            ->assertSee('same four-class EfficientNet-B0 model')
-            ->assertSee('Banana tree codename')
-            ->assertDontSee('Required image view')
-            ->assertDontSee('name="view_type"', false);
+            ->assertSee('Add a clear photograph')
+            ->assertSee('Image Capturing Guidelines')
+            ->assertDontSee('Choose the main image path')
+            ->assertDontSee('Where are the symptoms most visible?')
+            ->assertDontSee('name="image_path"', false)
+            ->assertDontSee('name="specific_view"', false);
         $this->actingAs($monitor)->get('/dashboard')->assertOk()->assertSee('Guided visual screening')->assertSee('Start new screening');
         $this->actingAs($monitor)->get('/analytics')->assertForbidden();
         $this->actingAs($monitor)->get('/monitoring')->assertOk()->assertSee('Monitor reports by farm block');
@@ -95,7 +94,7 @@ class RevisedSpecificationTest extends TestCase
         $this->actingAs($admin)->get('/screenings/new')->assertForbidden();
     }
 
-    public function test_both_capture_paths_save_predictions_from_the_shared_four_class_contract(): void
+    public function test_automatic_image_area_analysis_saves_predictions_from_the_shared_four_class_contract(): void
     {
         config(['services.bananashield.mode' => 'mock']);
         $monitor = $this->user('monitoring_personnel');
@@ -112,10 +111,8 @@ class RevisedSpecificationTest extends TestCase
             );
         });
 
-        foreach ([['leaf', 'leaf_underside', 'NB-L014'], ['whole_plant', 'crown_upper_leaves', 'NB-W027']] as [$path, $specificView, $treeCodename]) {
+        foreach (['NB-L014', 'NB-W027'] as $treeCodename) {
             $this->actingAs($monitor)->post('/screenings', [
-                'image_path' => $path,
-                'specific_view' => $specificView,
                 'image' => $this->image(),
                 'variety' => 'Cardava',
                 'observed_at' => '2026-08-11',
@@ -126,10 +123,9 @@ class RevisedSpecificationTest extends TestCase
 
         $this->assertDatabaseCount('cases', 2);
         $this->assertDatabaseCount('predictions', 2);
-        $this->assertDatabaseHas('cases', ['farm_section' => 'North Block', 'tree_codename' => 'NB-L014']);
-        $this->assertDatabaseHas('cases', ['farm_section' => 'North Block', 'tree_codename' => 'NB-W027']);
-        $this->assertDatabaseHas('case_images', ['image_path' => 'leaf', 'specific_view' => 'leaf_underside', 'view_type' => 'leaf_underside']);
-        $this->assertDatabaseHas('case_images', ['image_path' => 'whole_plant', 'specific_view' => 'crown_upper_leaves', 'view_type' => 'crown_upper_leaves']);
+        $this->assertDatabaseHas('cases', ['screening_path' => 'auto_detected', 'tree_codename' => 'NB-L014']);
+        $this->assertDatabaseHas('cases', ['screening_path' => 'auto_detected', 'tree_codename' => 'NB-W027']);
+        $this->assertDatabaseHas('case_images', ['image_path' => 'auto_detected', 'specific_view' => 'auto_detected', 'view_type' => 'auto_detected']);
         foreach (Prediction::pluck('predicted_class') as $class) {
             $this->assertContains($class, ['black_sigatoka', 'fusarium_wilt', 'banana_bunchy_top_disease', 'inconclusive']);
         }
@@ -137,124 +133,205 @@ class RevisedSpecificationTest extends TestCase
         $owner = $this->user('farm_owner');
         $this->actingAs($owner)->get('/analytics')
             ->assertOk()
-            ->assertSee('50 percent leaf screening and 50 percent whole-plant screening')
-            ->assertSee('<b>2</b> cases', false);
+            ->assertSee('Reports by farm')
+            ->assertViewHas('analytics', fn ($analytics) => $analytics['summary']['total'] === 2);
     }
 
-    public function test_healthy_screenings_are_not_saved_but_inconclusive_screenings_are(): void
+    public function test_healthy_screenings_are_saved_with_images_and_low_confidence_results_remain_inconclusive(): void
     {
         config(['services.bananashield.mode' => 'mock']);
         $monitor = $this->user('monitoring_personnel');
+        $owner = $this->user('farm_owner');
+        $farm = FarmProfile::create([
+            'farm_name' => 'Healthy Screening Farm',
+            'municipality' => 'Bansalan',
+            'province' => 'Davao del Sur',
+            'managed_by' => $owner->id,
+        ]);
+        $block = FarmSection::create([
+            'farm_profile_id' => $farm->id,
+            'name' => 'Block A',
+            'active' => true,
+            'plant_codenames' => ['BA-H001', 'BA-I002'],
+        ]);
         $this->mock(MockPredictionService::class, function ($mock) {
             $mock->shouldReceive('predict')->twice()->andReturn(
                 $this->mockPrediction('healthy_banana', 'Healthy Banana', 0.89, 'conclusive'),
-                $this->mockPrediction('inconclusive', 'Inconclusive result', 0.43, 'inconclusive'),
+                $this->mockPrediction('healthy_banana', 'Healthy Banana', 0.43, 'conclusive'),
+            );
+        });
+
+        $response = $this->actingAs($monitor)->post('/screenings', [
+            'image' => $this->image(),
+            'observed_at' => '2026-08-11',
+            'farm_profile_id' => $farm->id,
+            'farm_section_id' => $block->id,
+            'tree_codename' => 'BA-H001',
+        ])->assertOk()->assertSee('Screening complete and case saved')
+            ->assertDontSee('No farm case was created.')
+            ->assertViewHas('case', fn ($case) => $case instanceof PlantCase);
+        $case = $response->viewData('case');
+        $image = $case->images()->firstOrFail();
+
+        $this->assertDatabaseCount('cases', 1);
+        $this->assertDatabaseCount('case_images', 1);
+        $this->assertDatabaseCount('predictions', 1);
+        $this->assertDatabaseHas('cases', ['id' => $case->id, 'farm_profile_id' => $farm->id, 'farm_section' => 'Block A', 'tree_codename' => 'BA-H001']);
+        $this->assertDatabaseHas('predictions', ['case_id' => $case->id, 'predicted_class' => 'healthy_banana']);
+        $this->assertTrue(\Illuminate\Support\Facades\Storage::disk('local')->exists($image->storage_path));
+        $this->assertDatabaseHas('audit_logs', ['action' => 'screening.case_created', 'entity_id' => $case->id]);
+        $this->get("/cases/{$case->id}")->assertOk()->assertSee('Healthy Screening Farm');
+        $this->get("/cases/{$case->id}/images/{$image->id}")->assertOk();
+
+        $this->actingAs($monitor)->post('/screenings', [
+            'image' => $this->image(),
+            'observed_at' => '2026-08-12',
+            'farm_profile_id' => $farm->id,
+            'farm_section_id' => $block->id,
+            'tree_codename' => 'BA-I002',
+        ])->assertOk()->assertViewHas('case', fn ($case) => $case instanceof PlantCase);
+
+        $this->assertDatabaseCount('cases', 2);
+        $this->assertDatabaseCount('case_images', 2);
+        $this->assertDatabaseCount('predictions', 2);
+        $this->assertDatabaseHas('predictions', ['predicted_class' => 'inconclusive', 'decision_status' => 'inconclusive']);
+        $this->get('/monitoring')->assertOk()->assertViewHas('recordTotal', 2)->assertSee('Healthy Banana');
+        $this->get('/dashboard')->assertOk()->assertViewHas('caseCount', 2);
+        $this->actingAs($this->user('monitoring_personnel'))->get("/cases/{$case->id}")->assertForbidden();
+        $this->get("/cases/{$case->id}/images/{$image->id}")->assertForbidden();
+        $this->get('/monitoring?outcome=healthy')->assertOk()->assertViewHas('cases', fn ($cases) => $cases->total() === 0);
+
+        $this->actingAs($owner)->get('/analytics')->assertOk()
+            ->assertViewHas('analytics', fn ($analytics) =>
+                $analytics['summary'] === ['total' => 2, 'healthy' => 1, 'disease' => 0, 'inconclusive' => 1, 'unavailable' => 0]
+            );
+        $this->get('/monitoring?outcome=healthy')->assertOk()->assertViewHas('cases', fn ($cases) => $cases->total() === 1);
+        $this->get('/monitoring?decision=inconclusive')->assertOk()->assertViewHas('cases', fn ($cases) => $cases->total() === 1);
+        $this->get('/monitoring?decision=conclusive')->assertOk()->assertViewHas('cases', fn ($cases) => $cases->total() === 1);
+        $this->post("/cases/{$case->id}/review", ['review_status' => 'reviewed'])->assertRedirect();
+        $this->assertDatabaseHas('predictions', ['case_id' => $case->id, 'predicted_class' => 'healthy_banana']);
+    }
+
+    public function test_screening_context_uses_registered_farms_blocks_and_plant_codenames(): void
+    {
+        config(['services.bananashield.mode' => 'mock']);
+        $owner = $this->user('farm_owner');
+        $monitor = $this->user('monitoring_personnel');
+        $farm = FarmProfile::create([
+            'farm_name' => 'San Isidro Banana Farm',
+            'municipality' => 'Bansalan',
+            'province' => 'Davao del Sur',
+            'managed_by' => $owner->id,
+        ]);
+        $northBlock = FarmSection::create([
+            'farm_profile_id' => $farm->id,
+            'name' => 'North Block',
+            'active' => true,
+            'plant_codenames' => ['NB-P001', 'NB-P002'],
+        ]);
+        $otherFarm = FarmProfile::create([
+            'farm_name' => 'Riverside Banana Farm',
+            'municipality' => 'Padada',
+            'province' => 'Davao del Sur',
+            'managed_by' => $owner->id,
+        ]);
+        $otherBlock = FarmSection::create([
+            'farm_profile_id' => $otherFarm->id,
+            'name' => 'Riverside Block',
+            'active' => true,
+            'plant_codenames' => ['RB-P001'],
+        ]);
+
+        $this->actingAs($monitor)->get('/screenings/new')
+            ->assertOk()
+            ->assertSee('name="farm_profile_id"', false)
+            ->assertSee('name="farm_section_id"', false)
+            ->assertSee('San Isidro Banana Farm')
+            ->assertSee('Registered codenames only');
+
+        $this->mock(MockPredictionService::class, function ($mock) {
+            $mock->shouldReceive('predict')->once()->andReturn(
+                $this->mockPrediction('black_sigatoka', 'Black Sigatoka', 0.87, 'conclusive')
             );
         });
 
         $this->actingAs($monitor)->post('/screenings', [
-            'image_path' => 'leaf',
-            'specific_view' => 'whole_leaf',
             'image' => $this->image(),
             'observed_at' => '2026-08-11',
-            'farm_section' => 'Block A',
-            'tree_codename' => 'BA-H001',
-        ])->assertOk()
-            ->assertSee('Healthy screening—not added to reports.')
-            ->assertSee('No farm case was created.')
-            ->assertViewHas('case', null)
-            ->assertViewHas('imagePreview', fn ($preview) => str_starts_with($preview, 'data:image/png;base64,'));
+            'farm_profile_id' => $farm->id,
+            'farm_section_id' => $northBlock->id,
+            'tree_codename' => 'NB-P001',
+        ])->assertOk()->assertSee('Screening complete and case saved');
 
-        $this->assertDatabaseCount('cases', 0);
-        $this->assertDatabaseCount('case_images', 0);
-        $this->assertDatabaseCount('predictions', 0);
-        $this->assertDatabaseHas('audit_logs', [
-            'user_id' => $monitor->id,
-            'action' => 'screening.healthy_result_completed',
+        $this->assertDatabaseHas('cases', [
+            'farm_profile_id' => $farm->id,
+            'farm_section' => 'North Block',
+            'tree_codename' => 'NB-P001',
         ]);
 
-        $this->actingAs($monitor)->post('/screenings', [
-            'image_path' => 'leaf',
-            'specific_view' => 'whole_leaf',
+        $this->actingAs($monitor)->from('/screenings/new')->post('/screenings', [
             'image' => $this->image(),
-            'observed_at' => '2026-08-12',
-            'farm_section' => 'Block A',
-            'tree_codename' => 'BA-I002',
-        ])->assertOk()
-            ->assertSee('Screening complete and case saved')
-            ->assertViewHas('case', fn ($case) => $case instanceof PlantCase);
+            'observed_at' => '2026-08-11',
+            'farm_profile_id' => $farm->id,
+            'farm_section_id' => $otherBlock->id,
+            'tree_codename' => 'RB-P001',
+        ])->assertRedirect('/screenings/new')->assertSessionHasErrors('farm_section_id');
 
-        $this->assertDatabaseCount('cases', 1);
-        $this->assertDatabaseCount('case_images', 1);
-        $this->assertDatabaseHas('predictions', ['predicted_class' => 'inconclusive']);
-        $this->assertDatabaseHas('cases', ['tree_codename' => 'BA-I002']);
-
-        $legacyHealthyCase = PlantCase::create([
-            'case_number' => 'BS-2026-LEGACYHEALTHY',
+        $this->actingAs($monitor)->from('/screenings/new')->post('/screenings', [
+            'image' => $this->image(),
+            'observed_at' => '2026-08-11',
+            'farm_profile_id' => $farm->id,
+            'farm_section_id' => $northBlock->id,
+            'tree_codename' => 'RB-P001',
+        ])->assertRedirect('/screenings/new')->assertSessionHasErrors('tree_codename');
+    }
+    public function test_follow_ups_can_be_saved_with_or_without_an_image_without_selecting_a_view(): void
+    {
+        $monitor = $this->user('monitoring_personnel');
+        $case = PlantCase::create([
+            'case_number' => 'BS-FOLLOWUP-NOVIEW',
             'submitted_by' => $monitor->id,
-            'screening_path' => 'leaf',
-            'observed_at' => '2026-08-10',
-            'farm_section' => 'Block A',
+            'screening_path' => 'auto_detected',
+            'observed_at' => '2026-09-05',
             'status' => 'open',
             'review_status' => 'pending',
         ]);
-        $legacyImage = CaseImage::create([
-            'case_id' => $legacyHealthyCase->id,
-            'view_type' => 'close_up_leaf',
-            'image_type' => 'original',
-            'storage_disk' => 'local',
-            'storage_path' => 'legacy/healthy.png',
-            'original_filename' => 'healthy.png',
-            'mime_type' => 'image/png',
-            'file_size' => 100,
-            'width' => 300,
-            'height' => 300,
-            'image_quality_status' => 'accepted',
-            'metadata_removed' => true,
-            'uploaded_at' => now(),
-        ]);
-        Prediction::create([
-            'case_id' => $legacyHealthyCase->id,
-            'image_id' => $legacyImage->id,
-            'predicted_class' => 'healthy_banana',
-            'display_label' => 'Healthy Banana',
-            'confidence' => 0.90,
-            'decision_status' => 'conclusive',
-            'quality_status' => 'accepted',
-            'quality_flags' => [],
-            'result_message' => 'Legacy healthy result.',
-            'disclaimer' => 'Preliminary result only.',
-        ]);
+        $url = "/cases/{$case->id}/follow-ups";
+        $this->actingAs($monitor)->get("/cases/{$case->id}")
+            ->assertOk()->assertDontSee('Follow-up view')->assertDontSee('name="view_type"', false);
 
-        $this->actingAs($monitor)->get('/monitoring')
-            ->assertOk()
-            ->assertViewHas('recordTotal', 1)
-            ->assertDontSee('BS-2026-LEGACYHEALTHY');
-        $this->actingAs($monitor)->get('/dashboard')
-            ->assertOk()
-            ->assertViewHas('caseCount', 1);
-        $this->actingAs($monitor)->get("/cases/{$legacyHealthyCase->id}")->assertNotFound();
+        $this->from("/cases/{$case->id}")->post($url, [
+            'observation' => 'No visible change.', 'case_status' => 'unchanged',
+        ])->assertRedirect("/cases/{$case->id}")->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('follow_ups', 1);
+        $this->assertDatabaseCount('case_images', 0);
 
-        $owner = $this->user('farm_owner');
-        $this->actingAs($owner)->get('/analytics')
-            ->assertOk()
-            ->assertDontSee('Healthy Banana')
-            ->assertSee(route('monitoring'), false)
-            ->assertSee(route('monitoring', ['decision' => 'conclusive']), false)
-            ->assertSee(route('monitoring', ['decision' => 'inconclusive']), false)
-            ->assertSee(route('monitoring', ['status' => 'referred']), false);
-        $this->actingAs($owner)->get('/monitoring?decision=inconclusive')
-            ->assertOk()
-            ->assertViewHas('selectedDecision', 'inconclusive')
-            ->assertViewHas('cases', fn ($cases) => $cases->total() === 1)
-            ->assertSee('Inconclusive results');
-        $this->actingAs($owner)->get('/monitoring?decision=conclusive')
-            ->assertOk()
-            ->assertViewHas('cases', fn ($cases) => $cases->total() === 0)
-            ->assertSee('Conclusive results');
+        $this->post($url, [
+            'observation' => 'Updated photograph.', 'case_status' => 'improving',
+            'image' => $this->image(),
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('follow_ups', 2);
+        $this->assertDatabaseCount('case_images', 1);
+        $image = $case->images()->firstOrFail();
+        $this->assertSame('unspecified', $image->view_type);
+        $this->assertSame('follow_up', $image->image_type);
+        $this->assertNotNull($image->follow_up_id);
+        $this->assertTrue(\Illuminate\Support\Facades\Storage::disk('local')->exists($image->storage_path));
+        $this->assertDatabaseHas('cases', ['id' => $case->id, 'status' => 'improving']);
+        $this->get("/cases/{$case->id}/images/{$image->id}")->assertOk();
+
+        $this->post($url, [
+            'observation' => 'Invalid file.', 'case_status' => 'unchanged',
+            'image' => UploadedFile::fake()->create('notes.txt', 1, 'text/plain'),
+        ])->assertSessionHasErrors('image');
+        $this->actingAs($this->user('monitoring_personnel'))->post($url, [
+            'observation' => 'Not this reporter.', 'case_status' => 'unchanged',
+        ])->assertForbidden();
+        $this->assertDatabaseCount('follow_ups', 2);
     }
 
-    public function test_specific_view_must_match_the_image_path_and_is_stored_as_metadata(): void
+
+    public function test_image_area_is_automatically_assigned_without_manual_input(): void
     {
         config(['services.bananashield.mode' => 'mock']);
         $monitor = $this->user('monitoring_personnel');
@@ -264,28 +341,17 @@ class RevisedSpecificationTest extends TestCase
             );
         });
 
-        $this->actingAs($monitor)->from('/screenings/new')->post('/screenings', [
-            'image_path' => 'leaf',
-            'specific_view' => 'full_plant',
-            'image' => $this->image(),
-            'observed_at' => '2026-08-11',
-        ])->assertRedirect('/screenings/new')->assertSessionHasErrors('specific_view');
-
-        $this->assertDatabaseCount('cases', 0);
-
         $this->actingAs($monitor)->post('/screenings', [
-            'image_path' => 'leaf',
-            'specific_view' => 'leaf_underside',
             'image' => $this->image(),
             'observed_at' => '2026-08-11',
         ])->assertOk()->assertSee('Screening complete and case saved');
 
         $this->assertDatabaseCount('cases', 1);
-        $this->assertDatabaseHas('cases', ['screening_path' => 'leaf']);
+        $this->assertDatabaseHas('cases', ['screening_path' => 'auto_detected']);
         $this->assertDatabaseHas('case_images', [
-            'image_path' => 'leaf',
-            'specific_view' => 'leaf_underside',
-            'view_type' => 'leaf_underside',
+            'image_path' => 'auto_detected',
+            'specific_view' => 'auto_detected',
+            'view_type' => 'auto_detected',
         ]);
     }
 
@@ -379,7 +445,7 @@ class RevisedSpecificationTest extends TestCase
             ->assertDontSee('class="block-tile"', false)
             ->assertSee('Block A')
             ->assertSee('Block B')
-            ->assertSee('Search reporter, tree codename, block, case number', false)
+            ->assertSee('Case number, plant codename, reporter...', false)
             ->assertViewHas('recordTotal', 3)
             ->assertViewHas('blocks', fn ($blocks) => $blocks->firstWhere('name', 'Block A')['reports_count'] === 2);
 
@@ -457,50 +523,90 @@ class RevisedSpecificationTest extends TestCase
         $this->assertDatabaseHas('cases', ['id' => $case->id, 'review_status' => 'needs_follow_up', 'reviewed_by' => $owner->id]);
     }
 
-    public function test_farm_owner_can_manage_profile_sections_and_notification_preferences(): void
+    public function test_farm_owner_can_add_and_edit_managed_farms_and_blocks(): void
     {
         $owner = $this->user('farm_owner');
 
         $this->actingAs($owner)->get('/farm-settings')
             ->assertOk()
-            ->assertSee('Farm profile and settings')
-            ->assertSee('Sections and blocks');
+            ->assertSee('Manage farms')
+            ->assertSee('Add a farm');
 
-        $this->actingAs($owner)->patch('/farm-settings', [
+        $this->actingAs($owner)->post('/farm-settings/farms', [
             'farm_name' => 'San Isidro Banana Farm',
             'barangay' => 'San Isidro',
             'municipality' => 'Bansalan',
             'province' => 'Davao del Sur',
             'total_area_hectares' => '12.50',
             'primary_varieties' => 'Cardava, Tundan',
-            'notification_email' => 'owner@example.test',
-            'case_updates' => '1',
-            'referral_alerts' => '1',
-            'weekly_summary' => '0',
-        ])->assertRedirect();
+        ])->assertRedirect()->assertSessionHas('success');
 
-        $this->assertDatabaseHas('farm_profiles', [
-            'farm_name' => 'San Isidro Banana Farm',
-            'municipality' => 'Bansalan',
-            'managed_by' => $owner->id,
-        ]);
+        $farm = FarmProfile::query()
+            ->where('farm_name', 'San Isidro Banana Farm')
+            ->where('managed_by', $owner->id)
+            ->firstOrFail();
 
-        $this->actingAs($owner)->post('/farm-settings/sections', [
+        $this->actingAs($owner)->post("/farm-settings/farms/{$farm->id}/blocks", [
             'name' => 'North Block',
             'area_hectares' => '4.25',
             'notes' => 'Upper field section',
-        ])->assertRedirect();
+            'plant_codenames' => "NB-P001\nNB-P002",
+        ])->assertRedirect()->assertSessionHas('success');
 
-        $this->assertDatabaseHas('farm_sections', [
+        $block = FarmSection::query()
+            ->where('farm_profile_id', $farm->id)
+            ->where('name', 'North Block')
+            ->firstOrFail();
+        $this->assertSame(['NB-P001', 'NB-P002'], $block->plant_codenames);
+
+        $this->actingAs($owner)->post("/farm-settings/farms/{$farm->id}/blocks/batch", [
+            'blocks' => [
+                [
+                    'name' => 'East Block',
+                    'area_hectares' => '3.00',
+                    'notes' => 'Near the irrigation canal',
+                    'plant_codenames' => "EB-P001\nEB-P002",
+                ],
+                [
+                    'name' => 'South Block',
+                    'area_hectares' => '2.75',
+                    'notes' => 'Lower field section',
+                    'plant_codenames' => 'SB-P001, SB-P002',
+                ],
+            ],
+        ])->assertRedirect()->assertSessionHas('success');
+
+        $this->assertDatabaseHas('farm_sections', ['farm_profile_id' => $farm->id, 'name' => 'East Block']);
+        $this->assertSame(['SB-P001', 'SB-P002'], FarmSection::where('farm_profile_id', $farm->id)->where('name', 'South Block')->firstOrFail()->plant_codenames);
+
+        $this->actingAs($owner)->patch("/farm-settings/farms/{$farm->id}/blocks/{$block->id}", [
             'name' => 'North Block',
-            'area_hectares' => '4.25',
-            'active' => true,
+            'area_hectares' => '4.50',
+            'notes' => 'Upper field section near the access road',
+            'plant_codenames' => 'NB-P001, NB-P002, NB-P003',
+        ])->assertRedirect()->assertSessionHas('success');
+
+        $this->assertSame(['NB-P001', 'NB-P002', 'NB-P003'], $block->refresh()->plant_codenames);
+        $this->assertSame('4.50', $block->area_hectares);
+
+        $this->actingAs($owner)->patch("/farm-settings/farms/{$farm->id}", [
+            'farm_name' => 'San Isidro Banana Farm — North',
+            'barangay' => 'San Isidro',
+            'municipality' => 'Bansalan',
+            'province' => 'Davao del Sur',
+            'total_area_hectares' => '14.75',
+            'primary_varieties' => 'Cardava, Tundan, Lakatan',
+        ])->assertRedirect()->assertSessionHas('success');
+
+        $this->assertDatabaseHas('farm_profiles', [
+            'id' => $farm->id,
+            'farm_name' => 'San Isidro Banana Farm — North',
+            'managed_by' => $owner->id,
         ]);
 
         $monitor = $this->user('monitoring_personnel');
         $this->actingAs($monitor)->get('/farm-settings')->assertForbidden();
     }
-
     public function test_farm_owner_can_create_monitoring_personnel_accounts_only(): void
     {
         $owner = $this->user('farm_owner');

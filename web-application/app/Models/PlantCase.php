@@ -23,6 +23,7 @@ class PlantCase extends Model
 
     public function submitter() { return $this->belongsTo(User::class, 'submitted_by'); }
     public function reviewer() { return $this->belongsTo(User::class, 'reviewed_by'); }
+    public function farmProfile() { return $this->belongsTo(FarmProfile::class); }
     public function images() { return $this->hasMany(CaseImage::class, 'case_id'); }
     public function predictions() { return $this->hasMany(Prediction::class, 'case_id'); }
     public function latestPrediction() { return $this->hasOne(Prediction::class, 'case_id')->latestOfMany(); }
@@ -30,12 +31,19 @@ class PlantCase extends Model
 
     public function scopeReportable(Builder $query): Builder
     {
-        return $query->where(function (Builder $caseQuery) {
-            $caseQuery
-                ->whereDoesntHave('predictions')
-                ->orWhereHas('latestPrediction', function (Builder $predictionQuery) {
-                    $predictionQuery->where('predicted_class', '!=', 'healthy_banana');
-                });
+        // Every completed screening is reportable, including healthy results.
+        return $query;
+    }
+
+    public function scopeOutcome(Builder $query, string $outcome): Builder
+    {
+        return $query->where(function (Builder $cases) use ($outcome) {
+            $cases->whereHas('latestPrediction', fn (Builder $prediction) =>
+                $prediction->whereRaw(Prediction::outcomeSql().' = ?', [$outcome])
+            );
+            if ($outcome === 'unavailable') {
+                $cases->orWhereDoesntHave('latestPrediction');
+            }
         });
     }
 
@@ -50,6 +58,6 @@ class PlantCase extends Model
 
     public function isReportable(): bool
     {
-        return $this->latestPrediction()->value('predicted_class') !== 'healthy_banana';
+        return true;
     }
 }

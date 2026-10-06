@@ -45,7 +45,10 @@ def load_configured_model():
         from tensorflow.keras.models import load_model
     except ImportError as exc:
         raise RuntimeError("TensorFlow is required for AI_MODE=model; install requirements-model.txt") from exc
-    _model = load_model(MODEL_PATH)
+    # Inference does not need the training optimizer, losses, or metrics. Loading
+    # without compilation also avoids deployment failures when the Colab and
+    # local TensorFlow/Keras versions differ.
+    _model = load_model(MODEL_PATH, compile=False)
     return _model
 
 
