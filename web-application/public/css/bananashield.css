@@ -608,6 +608,35 @@ textarea.input{min-height:105px;resize:vertical}.notice>span{line-height:1.55}
 .analytics-distribution-track { height: 8px; overflow: hidden; border-radius: 4px; background: #f1f5f1; }
 .analytics-distribution-track > span { height: 100%; display: block; }
 .analytics-farms, .analytics-workflow { margin-top: 24px; }
+.analytics-blocks { margin-top: 24px; }
+.analytics-section-heading { margin-bottom: 16px; }
+.analytics-section-heading h2 { margin: 0; color: var(--forest-900); font-family: Georgia, serif; font-size: 28px; line-height: 1.2; }
+.analytics-section-heading p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+.analytics-block-farm { min-width: 0; margin-top: 16px; border: 1px solid var(--line); border-radius: 16px; padding: 24px; background: white; }
+.analytics-block-farm .analytics-panel-heading { margin-bottom: 16px; }
+.analytics-block-farm .analytics-panel-heading h3 { margin: 0; color: var(--forest-900); font-family: Georgia, serif; font-size: 23px; line-height: 1.2; }
+.block-hotspot { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; border: 1px solid #e7cfaa; border-radius: 12px; padding: 14px 16px; color: #634817; background: #fff6e5; font-size: 13px; line-height: 1.55; }
+.block-hotspot-label { flex: none; border-radius: 999px; padding: 3px 8px; color: #7d4a20; background: #f3d19d; font-size: 11px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
+.block-hotspot-empty { color: #496254; border-color: #c9ddcd; background: #eef7ef; }
+.block-hotspot-empty span { color: var(--muted); }
+.block-disease-key { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 14px; color: var(--muted); font-size: 12px; }
+.block-disease-key span { display: inline-flex; align-items: center; gap: 6px; }
+.block-disease-key i { width: 10px; height: 10px; border-radius: 2px; }
+.block-disease-black { background: #9b5544; }
+.block-disease-fusarium { background: #c98935; }
+.block-disease-bbt { background: #745eaa; }
+.block-disease-chart { display: grid; gap: 12px; margin-bottom: 24px; }
+.block-disease-chart-empty { min-height: 72px; place-items: center start; border: 1px dashed #c8d5ca; border-radius: 10px; padding: 16px; background: #fafcf9; }
+.block-disease-chart-empty p { margin: 0; }
+.block-disease-row { display: grid; grid-template-columns: minmax(120px, .65fr) minmax(180px, 2fr) 36px; align-items: center; gap: 12px; min-width: 0; font-size: 13px; }
+.block-disease-row > a { min-width: 0; color: var(--forest-900); font-weight: 750; overflow-wrap: anywhere; }
+.block-disease-row > a:hover { color: var(--leaf-700); }
+.block-disease-row > strong { text-align: right; font-variant-numeric: tabular-nums; }
+.block-disease-track { display: flex; min-height: 24px; overflow: hidden; border-radius: 4px; background: #f1f5f1; }
+.block-disease-track > span { min-width: 0; }
+.block-analytics-table { min-width: 1080px; }
+.block-analytics-table th:first-child { min-width: 170px; }
+.block-analytics-table th:last-child, .block-analytics-table td:last-child { min-width: 190px; }
 .analytics-table-wrap { max-width: 100%; overflow-x: auto; }
 .analytics-farm-table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
 .analytics-farm-table th, .analytics-farm-table td { padding: 16px; border-bottom: 1px solid var(--line); text-align: right; }
@@ -638,6 +667,9 @@ textarea.input{min-height:105px;resize:vertical}.notice>span{line-height:1.55}
     .analytics-summary-item:nth-child(2) { border-right: 0; }
     .analytics-summary-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
     .analytics-scope { flex-basis: 100%; margin-left: 0; }
+    .analytics-block-farm { padding: 20px 16px; }
+    .block-hotspot { display: grid; }
+    .block-disease-row { grid-template-columns: minmax(92px, .8fr) minmax(120px, 1.5fr) 28px; gap: 8px; }
 }
 @media (max-width: 560px) {
     .analytics-panel { padding: 20px 16px; }
