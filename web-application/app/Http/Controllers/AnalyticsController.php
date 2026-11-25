@@ -7,6 +7,7 @@ use App\Models\PlantCase;
 use App\Models\Prediction;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -14,7 +15,7 @@ class AnalyticsController extends Controller
 {
     public function __invoke(Request $request)
     {
-        $farms = FarmProfile::query()->orderBy('farm_name')->get();
+        $farms = FarmProfile::query()->with('sections')->orderBy('farm_name')->get();
         $filters = $request->validate([
             'farm' => ['nullable', 'string', Rule::in(array_merge(
                 ['__unassigned'], $farms->modelKeys()
@@ -30,7 +31,7 @@ class AnalyticsController extends Controller
         $caseRows = PlantCase::query()->visibleTo($request->user())
             ->leftJoinSub($latestPredictions, 'latest', 'latest.case_id', '=', 'cases.id')
             ->leftJoin('predictions', 'predictions.id', '=', 'latest.prediction_id')
-            ->select('cases.id', 'cases.farm_profile_id', 'cases.created_at', 'cases.status', 'cases.review_status', 'predictions.predicted_class')
+            ->select('cases.id', 'cases.farm_profile_id', 'cases.farm_section', 'cases.created_at', 'cases.status', 'cases.review_status', 'predictions.predicted_class', 'predictions.decision_status')
             ->selectRaw(Prediction::outcomeSql().' as outcome');
 
         if ($selectedFarm === '__unassigned') {
@@ -101,6 +102,14 @@ class AnalyticsController extends Controller
             ] + $this->counts($farmCounts->get('__unassigned')));
         }
 
+        // Block analytics keeps the same latest-prediction and visibility scope as the
+        // rest of this report, while retaining registered blocks that have no cases yet.
+        $blockCounts = (clone $records)
+            ->selectRaw('farm_profile_id, farm_section, '.$this->blockCountColumns())
+            ->groupBy('farm_profile_id', 'farm_section')
+            ->get();
+        $blockAnalytics = $this->blockAnalytics($farms, $blockCounts, $selectedFarm);
+
         return view('analytics.index', [
             'farms' => $farms,
             'selectedFarm' => $selectedFarm,
@@ -108,7 +117,7 @@ class AnalyticsController extends Controller
                 ? 'Farm not assigned'
                 : ($farms->firstWhere('id', $selectedFarm)?->farm_name ?? 'All farms'),
             'reportParams' => $reportParams,
-            'analytics' => compact('metrics', 'summary', 'classes', 'trend', 'statuses', 'pendingReview', 'farmRows'),
+            'analytics' => compact('metrics', 'summary', 'classes', 'trend', 'statuses', 'pendingReview', 'farmRows', 'blockAnalytics'),
         ]);
     }
 
@@ -125,5 +134,128 @@ class AnalyticsController extends Controller
     {
         return collect(['total', 'healthy', 'disease', 'inconclusive', 'unavailable'])
             ->mapWithKeys(fn ($key) => [$key => (int) ($row?->{$key} ?? 0)])->all();
+    }
+
+    private function blockCountColumns(): string
+    {
+        // The deployed Laravel service persists the descriptive BBTD key while the
+        // trained-model artifact names its fourth class "bbtv". Accept both so older
+        // or directly imported model results are counted consistently.
+        $diseaseClasses = "'black_sigatoka', 'fusarium_wilt', 'banana_bunchy_top_disease', 'bbtv'";
+
+        return "COUNT(*) as total,
+            SUM(CASE WHEN outcome = 'healthy' THEN 1 ELSE 0 END) as healthy,
+            SUM(CASE WHEN decision_status = 'conclusive' AND predicted_class IN ({$diseaseClasses}) THEN 1 ELSE 0 END) as disease,
+            SUM(CASE WHEN outcome = 'inconclusive' THEN 1 ELSE 0 END) as inconclusive,
+            SUM(CASE WHEN outcome = 'unavailable' AND COALESCE(predicted_class, '') != 'bbtv' THEN 1 ELSE 0 END) as unavailable,
+            SUM(CASE WHEN decision_status = 'conclusive' AND predicted_class = 'black_sigatoka' THEN 1 ELSE 0 END) as black_sigatoka,
+            SUM(CASE WHEN decision_status = 'conclusive' AND predicted_class = 'fusarium_wilt' THEN 1 ELSE 0 END) as fusarium_wilt,
+            SUM(CASE WHEN decision_status = 'conclusive' AND predicted_class IN ('banana_bunchy_top_disease', 'bbtv') THEN 1 ELSE 0 END) as banana_bunchy_top_disease";
+    }
+
+    private function blockAnalytics($farms, $blockCounts, string $selectedFarm)
+    {
+        $diseaseLabels = [
+            'black_sigatoka' => 'Black Sigatoka',
+            'fusarium_wilt' => 'Fusarium Wilt',
+            'banana_bunchy_top_disease' => 'Banana Bunchy Top Disease',
+        ];
+
+        $countsByFarm = $blockCounts->groupBy('farm_profile_id');
+
+        return $farms
+            ->filter(fn (FarmProfile $farm) => $selectedFarm === '' || (string) $farm->id === $selectedFarm)
+            ->map(function (FarmProfile $farm) use ($countsByFarm, $diseaseLabels) {
+                $reported = [];
+                foreach ($countsByFarm->get($farm->id, collect()) as $row) {
+                    $key = Str::lower(trim((string) $row->farm_section));
+                    $key = $key === '' ? '__unassigned' : $key;
+                    $reported[$key] = $this->mergeBlockCounts($reported[$key] ?? [], $row);
+                }
+
+                $blocks = $farm->sections->map(function ($section) use (&$reported, $farm, $diseaseLabels) {
+                    $key = Str::lower(trim($section->name));
+                    $counts = $reported[$key] ?? $this->emptyBlockCounts();
+                    unset($reported[$key]);
+
+                    return $this->blockRow($farm->id, $section->name, $section->name, $counts, $diseaseLabels);
+                });
+
+                // Preserve named legacy blocks in the report instead of silently
+                // dropping historical screenings that predate block registration.
+                foreach ($reported as $key => $counts) {
+                    if ($key === '__unassigned') {
+                        continue;
+                    }
+                    $blocks->push($this->blockRow($farm->id, $counts['name'], $counts['name'], $counts, $diseaseLabels));
+                }
+                if (isset($reported['__unassigned'])) {
+                    $blocks->push($this->blockRow($farm->id, 'Unassigned Block', '__unassigned', $reported['__unassigned'], $diseaseLabels));
+                }
+
+                $maxDisease = $blocks->max('disease') ?? 0;
+                $hotspotBlocks = $maxDisease > 0
+                    ? $blocks->where('disease', $maxDisease)->pluck('name')->values()->all()
+                    : [];
+                $hotspotDiseases = $maxDisease > 0
+                    ? $blocks->where('disease', $maxDisease)->flatMap(fn (array $block) => $block['dominant_diseases'])->unique()->values()->all()
+                    : [];
+
+                return [
+                    'id' => $farm->id,
+                    'name' => $farm->farm_name,
+                    'location' => collect([$farm->municipality, $farm->province])->filter()->implode(', '),
+                    'chart_id' => 'block-disease-chart-'.$farm->id,
+                    'chart_max' => max(1, $maxDisease),
+                    'blocks' => $blocks->values(),
+                    'hotspot' => [
+                        'has_disease' => $maxDisease > 0,
+                        'count' => $maxDisease,
+                        'blocks' => $hotspotBlocks,
+                        'diseases' => $hotspotDiseases,
+                    ],
+                ];
+            })->values();
+    }
+
+    private function mergeBlockCounts(array $current, object $row): array
+    {
+        $counts = $current ?: $this->emptyBlockCounts();
+        $counts['name'] ??= trim((string) $row->farm_section);
+        foreach (array_keys($this->emptyBlockCounts()) as $key) {
+            if ($key !== 'name') {
+                $counts[$key] += (int) ($row->{$key} ?? 0);
+            }
+        }
+
+        return $counts;
+    }
+
+    private function emptyBlockCounts(): array
+    {
+        return array_fill_keys([
+            'total', 'disease', 'healthy', 'inconclusive', 'unavailable',
+            'black_sigatoka', 'fusarium_wilt', 'banana_bunchy_top_disease',
+        ], 0);
+    }
+
+    private function blockRow(int $farmId, string $name, string $query, array $counts, array $diseaseLabels): array
+    {
+        $diseaseCounts = collect($diseaseLabels)
+            ->mapWithKeys(fn ($label, $key) => [$key => (int) $counts[$key]])
+            ->all();
+        $highestDiseaseCount = max($diseaseCounts);
+        $dominantDiseases = $highestDiseaseCount > 0
+            ? collect($diseaseCounts)->filter(fn ($count) => $count === $highestDiseaseCount)
+                ->keys()->map(fn ($key) => $diseaseLabels[$key])->values()->all()
+            : [];
+
+        return [
+            'name' => $name,
+            'href' => route('monitoring', ['farm' => $farmId, 'block' => $query]),
+            'dominant_disease' => $dominantDiseases ? implode(', ', $dominantDiseases) : 'None',
+            'dominant_diseases' => $dominantDiseases,
+            'disease_counts' => $diseaseCounts,
+        ] + $counts;
     }
 }

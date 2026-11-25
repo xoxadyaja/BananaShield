@@ -115,6 +115,75 @@
     @endif
 </section>
 
+<section class="analytics-blocks" aria-labelledby="block-analytics-title">
+    <header class="analytics-section-heading">
+        <div>
+            <h2 id="block-analytics-title">Block disease analytics by farm</h2>
+            <p>Compare the latest disease results for every registered block. Repeated screenings count separately.</p>
+        </div>
+    </header>
+    @forelse($analytics['blockAnalytics'] as $farm)
+        <article class="analytics-block-farm" aria-labelledby="block-farm-{{ $farm['id'] }}-title">
+            <header class="analytics-panel-heading">
+                <div>
+                    <h3 id="block-farm-{{ $farm['id'] }}-title">{{ $farm['name'] }}</h3>
+                    <p>{{ $farm['location'] ?: 'Location not provided' }}</p>
+                </div>
+                <a href="{{ route('monitoring', ['farm' => $farm['id']]) }}">View farm reports</a>
+            </header>
+
+            @if($farm['hotspot']['has_disease'])
+                <div class="block-hotspot" role="status">
+                    <span class="block-hotspot-label">Disease hotspot</span>
+                    <div><strong>{{ implode(' and ', $farm['hotspot']['blocks']) }}</strong> {{ count($farm['hotspot']['blocks']) === 1 ? 'has' : 'share' }} the highest disease occurrence: <strong>{{ $farm['hotspot']['count'] }}</strong> {{ \Illuminate\Support\Str::plural('screening', $farm['hotspot']['count']) }}. Leading {{ count($farm['hotspot']['diseases']) === 1 ? 'disease' : 'diseases' }}: <strong>{{ implode(', ', $farm['hotspot']['diseases']) }}</strong>.</div>
+                </div>
+            @else
+                <div class="block-hotspot block-hotspot-empty" role="status"><strong>No disease occurrences recorded.</strong><span>Healthy, inconclusive, and unavailable results are still shown below.</span></div>
+            @endif
+
+            @if($farm['blocks']->isEmpty())
+                <div id="{{ $farm['chart_id'] }}" class="block-disease-chart block-disease-chart-empty" role="img" aria-label="No registered blocks or historical block reports for {{ $farm['name'] }} yet.">
+                    <p class="analytics-panel-note">No registered blocks or historical block reports for this farm yet.</p>
+                </div>
+            @else
+                <div class="block-disease-key" aria-label="Disease chart legend">
+                    <span><i class="block-disease-black" aria-hidden="true"></i>Black Sigatoka</span>
+                    <span><i class="block-disease-fusarium" aria-hidden="true"></i>Fusarium Wilt</span>
+                    <span><i class="block-disease-bbt" aria-hidden="true"></i>Banana Bunchy Top Disease</span>
+                </div>
+                <div id="{{ $farm['chart_id'] }}" class="block-disease-chart" role="img" aria-label="Disease occurrence by block for {{ $farm['name'] }}. Bars are scaled to {{ $farm['chart_max'] }} disease screenings.">
+                    @foreach($farm['blocks'] as $block)
+                        <div class="block-disease-row">
+                            <a href="{{ $block['href'] }}">{{ $block['name'] }}</a>
+                            <div class="block-disease-track" aria-label="{{ $block['name'] }}: {{ $block['disease'] }} disease {{ \Illuminate\Support\Str::plural('screening', $block['disease']) }}; Black Sigatoka {{ $block['black_sigatoka'] }}, Fusarium Wilt {{ $block['fusarium_wilt'] }}, Banana Bunchy Top Disease {{ $block['banana_bunchy_top_disease'] }}">
+                                @foreach(['black_sigatoka' => 'block-disease-black', 'fusarium_wilt' => 'block-disease-fusarium', 'banana_bunchy_top_disease' => 'block-disease-bbt'] as $class => $tone)
+                                    @if($block[$class] > 0)<span class="{{ $tone }}" style="width: {{ ($block[$class] / $farm['chart_max']) * 100 }}%" title="{{ str_replace('_', ' ', $class) }}: {{ $block[$class] }}"></span>@endif
+                                @endforeach
+                            </div>
+                            <strong>{{ $block['disease'] }}</strong>
+                        </div>
+                    @endforeach
+                </div>
+                <div class="analytics-table-wrap" tabindex="0" role="region" aria-label="Block screening counts for {{ $farm['name'] }}">
+                    <table class="analytics-farm-table block-analytics-table">
+                        <thead><tr><th scope="col">Block</th><th scope="col">Total</th><th scope="col">Disease</th><th scope="col">Black Sigatoka</th><th scope="col">Fusarium Wilt</th><th scope="col">Banana Bunchy Top</th><th scope="col">Healthy</th><th scope="col">Inconclusive</th><th scope="col">Unavailable</th><th scope="col">Dominant disease</th></tr></thead>
+                        <tbody>
+                            @foreach($farm['blocks'] as $block)
+                                <tr>
+                                    <th scope="row"><a href="{{ $block['href'] }}">{{ $block['name'] }}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a></th>
+                                    <td><strong>{{ $block['total'] }}</strong></td><td>{{ $block['disease'] }}</td><td>{{ $block['black_sigatoka'] }}</td><td>{{ $block['fusarium_wilt'] }}</td><td>{{ $block['banana_bunchy_top_disease'] }}</td><td>{{ $block['healthy'] }}</td><td>{{ $block['inconclusive'] }}</td><td>{{ $block['unavailable'] }}</td><td>{{ $block['dominant_disease'] }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </article>
+    @empty
+        <div class="analytics-empty"><h2>No registered farm selected</h2><p>Select a registered farm to review its block disease analytics.</p></div>
+    @endforelse
+</section>
+
 <section class="analytics-panel analytics-workflow" aria-labelledby="case-status-title">
     <header class="analytics-panel-heading">
         <div><h2 id="case-status-title">Case status</h2><p>User-recorded follow-up status, separate from the screening result</p></div>
