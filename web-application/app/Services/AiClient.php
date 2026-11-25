@@ -30,8 +30,7 @@ class AiClient
         return Http::withHeaders([
             'X-AI-Token' => (string) config('services.bananashield.token'),
             'Accept' => 'application/json',
-        ])->timeout((int) config('services.bananashield.timeout', 15))
-            ->retry(2, 200);
+        ])->timeout((int) config('services.bananashield.timeout', 15));
     }
 
     private function safeFilename(UploadedFile $image): string

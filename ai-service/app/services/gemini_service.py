@@ -1,6 +1,8 @@
 import base64
+import asyncio
 import json
 import os
+import random
 from typing import Any
 
 import httpx
@@ -150,21 +152,44 @@ async def detect_part(image_bytes: bytes, mime_type: str) -> PartDetectionResult
     }
     timeout = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "15"))
 
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(endpoint, headers=headers, json=request_payload)
-            response.raise_for_status()
-            response_payload = response.json()
-    except httpx.TimeoutException as exc:
-        raise GeminiServiceError("Gemini is temporarily unavailable.") from exc
-    except httpx.HTTPStatusError as exc:
-        raise GeminiServiceError("Gemini rejected the part-detection request.") from exc
-    except httpx.RequestError as exc:
-        # Includes connection, protocol, DNS, proxy, and other transport errors
-        # not covered by TimeoutException.
-        raise GeminiServiceError("Gemini is temporarily unavailable.") from exc
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise GeminiServiceError("Gemini returned an unreadable response.") from exc
+    # Gemini can intermittently return 503 while the service is under load. Retry
+    # only transient failures here, at the provider boundary, so Laravel makes one
+    # bounded request instead of multiplying failed requests of its own.
+    attempts = max(1, int(os.getenv("GEMINI_RETRY_ATTEMPTS", "3")))
+    # DNS failures usually clear a few seconds later. Give them a longer, still
+    # bounded window without making ordinary 503/time-out requests wait as long.
+    network_attempts = max(attempts, int(os.getenv("GEMINI_NETWORK_RETRY_ATTEMPTS", "5")))
+    retry_delay = max(0.0, float(os.getenv("GEMINI_RETRY_INITIAL_DELAY_SECONDS", "1")))
+    last_error: Exception | None = None
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for attempt in range(network_attempts):
+            try:
+                response = await client.post(endpoint, headers=headers, json=request_payload)
+                response.raise_for_status()
+                response_payload = response.json()
+                break
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise GeminiServiceError("Gemini returned an unreadable response.") from exc
+            except httpx.TimeoutException as exc:
+                last_error = exc
+                retryable = True
+            except httpx.HTTPStatusError as exc:
+                last_error = exc
+                retryable = exc.response.status_code in {408, 429, 500, 502, 503, 504}
+            except httpx.RequestError as exc:
+                last_error = exc
+                retryable = True
+
+            retry_limit = network_attempts if isinstance(last_error, httpx.ConnectError) else attempts
+            if not retryable or attempt == retry_limit - 1:
+                assert last_error is not None
+                raise GeminiServiceError(
+                    f"Gemini request failed after {attempt + 1} attempt(s): {last_error}"
+                ) from last_error
+
+            # Full jitter prevents several browser uploads from retrying in lockstep.
+            await asyncio.sleep(random.uniform(0, retry_delay * (2**attempt)))
 
     if not isinstance(response_payload, dict):
         raise GeminiServiceError("Gemini returned an invalid response envelope.")
