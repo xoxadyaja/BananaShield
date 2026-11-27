@@ -2,6 +2,8 @@ from io import BytesIO
 
 from fastapi.testclient import TestClient
 import httpx
+import asyncio
+import json
 from PIL import Image, ImageDraw
 import pytest
 
@@ -161,6 +163,53 @@ def test_detect_part_converts_gemini_timeout_to_stable_failure(monkeypatch):
     )
 
     assert_provider_failure_contract(response)
+
+
+def test_detect_part_retries_a_transient_gemini_503(monkeypatch):
+    monkeypatch.setenv("PART_DETECTION_MODE", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_RETRY_ATTEMPTS", "2")
+    monkeypatch.setenv("GEMINI_NETWORK_RETRY_ATTEMPTS", "2")
+    monkeypatch.setenv("GEMINI_RETRY_INITIAL_DELAY_SECONDS", "0")
+    request = httpx.Request("POST", "https://example.test")
+    outcomes = [
+        httpx.Response(503, request=request, json={"error": "overloaded"}),
+        httpx.Response(
+            200,
+            request=request,
+            json={
+                "output_text": json.dumps({
+                    "is_banana_image": True,
+                    "part": "Leaf",
+                    "usable": True,
+                    "message": "The primary banana plant view is Leaf.",
+                }),
+            },
+        ),
+    ]
+
+    class SequenceAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def post(self, *_args, **_kwargs):
+            return outcomes.pop(0)
+
+    monkeypatch.setattr(
+        "app.services.gemini_service.httpx.AsyncClient",
+        lambda **_kwargs: SequenceAsyncClient(),
+    )
+
+    from app.services.gemini_service import detect_part
+
+    result = asyncio.run(detect_part(b"image", "image/jpeg"))
+
+    assert result.part == "Leaf"
+    assert result.usable is True
+    assert outcomes == []
 
 
 @pytest.mark.parametrize("status_code", [401, 500])
