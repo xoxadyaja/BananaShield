@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CaseImage;
 use App\Models\FarmProfile;
 use App\Models\FarmSection;
+use App\Models\FollowUp;
 use App\Models\PlantCase;
 use App\Models\Prediction;
 use App\Models\User;
@@ -204,9 +205,9 @@ class RevisedSpecificationTest extends TestCase
         $peerMonitor = $this->user('monitoring_personnel');
         $this->actingAs($peerMonitor)->get("/cases/{$case->id}")
             ->assertOk()
-            ->assertSee('Submitted by '.$monitor->name)
-            ->assertSee('view only')
-            ->assertDontSee('Add follow-up observation');
+            ->assertSee('Reported by '.$monitor->name)
+            ->assertSee('Add follow-up observation')
+            ->assertSee('Following up on '.$monitor->name);
         $this->get("/cases/{$case->id}/images/{$image->id}")->assertOk();
         $this->get('/monitoring?outcome=healthy')->assertOk()->assertViewHas('cases', fn ($cases) => $cases->total() === 1);
 
@@ -333,10 +334,13 @@ class RevisedSpecificationTest extends TestCase
             'observation' => 'Invalid file.', 'case_status' => 'unchanged',
             'image' => UploadedFile::fake()->create('notes.txt', 1, 'text/plain'),
         ])->assertSessionHasErrors('image');
-        $this->actingAs($this->user('monitoring_personnel'))->post($url, [
-            'observation' => 'Not this reporter.', 'case_status' => 'unchanged',
-        ])->assertForbidden();
-        $this->assertDatabaseCount('follow_ups', 2);
+        $peerMonitor = $this->user('monitoring_personnel');
+        $this->actingAs($peerMonitor)->post($url, [
+            'observation' => 'Shift handoff update.', 'case_status' => 'unchanged',
+        ])->assertRedirect();
+        $this->assertDatabaseCount('follow_ups', 3);
+        $this->assertDatabaseHas('follow_ups', ['case_id' => $case->id, 'created_by' => $peerMonitor->id]);
+        $this->assertDatabaseHas('cases', ['id' => $case->id, 'submitted_by' => $monitor->id]);
     }
 
     public function test_image_area_is_automatically_assigned_without_manual_input(): void
@@ -499,7 +503,7 @@ class RevisedSpecificationTest extends TestCase
             ->assertDontSee('BS-2026-BLOCKA02');
     }
 
-    public function test_monitoring_personnel_can_read_peer_reports_but_cannot_change_them(): void
+    public function test_monitoring_personnel_can_follow_up_peer_reports_without_changing_the_original_submitter(): void
     {
         $owner = $this->user('farm_owner');
         $monitorA = User::factory()->create([
@@ -570,19 +574,45 @@ class RevisedSpecificationTest extends TestCase
 
         $this->get("/cases/{$peerCase->id}")
             ->assertOk()
-            ->assertSee('Submitted by Ana Reporter')
-            ->assertSee('view only')
-            ->assertDontSee('Add follow-up observation');
+            ->assertSee('Reported by Ana Reporter')
+            ->assertSee('Add follow-up observation')
+            ->assertSee('Following up on Ana Reporter\'s report', false);
         $this->get("/cases/{$peerCase->id}/images/{$image->id}")->assertOk();
         $this->post("/cases/{$peerCase->id}/follow-ups", [
-            'observation' => 'Unauthorized update.',
-            'case_status' => 'closed',
-        ])->assertForbidden();
+            'observation' => 'Shift handoff observation from Ben.',
+            'action_taken' => 'Scheduled a follow-up inspection.',
+            'case_status' => 'unchanged',
+        ])->assertRedirect();
+
+        $followUp = FollowUp::query()->where('case_id', $peerCase->id)->sole();
+        $this->assertSame($monitorB->id, $followUp->created_by);
+        $this->assertDatabaseHas('cases', [
+            'id' => $peerCase->id,
+            'submitted_by' => $monitorA->id,
+            'status' => 'unchanged',
+            'review_status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'case.follow_up_added',
+            'entity_id' => $followUp->id,
+            'user_id' => $monitorB->id,
+        ]);
+        $this->get("/cases/{$peerCase->id}")
+            ->assertOk()
+            ->assertSee('Reported by Ana Reporter')
+            ->assertSee('Follow-up by Ben Reviewer')
+            ->assertSee('(You)');
+
         $this->post("/cases/{$peerCase->id}/review", [
             'review_status' => 'closed',
         ])->assertForbidden();
-        $this->assertDatabaseMissing('follow_ups', ['case_id' => $peerCase->id]);
-        $this->assertDatabaseHas('cases', ['id' => $peerCase->id, 'status' => 'open', 'review_status' => 'pending']);
+
+        $peerCase->update(['status' => 'closed', 'closed_at' => now()]);
+        $this->post("/cases/{$peerCase->id}/follow-ups", [
+            'observation' => 'Attempted post-closure update.',
+            'case_status' => 'open',
+        ])->assertForbidden();
+        $this->assertDatabaseCount('follow_ups', 1);
     }
 
     public function test_ai_service_failure_creates_no_completed_prediction(): void

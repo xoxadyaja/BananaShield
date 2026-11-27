@@ -13,7 +13,12 @@ class FollowUpController extends Controller
 {
     public function store(Request $request, PlantCase $case, AuditLogger $audit)
     {
-        abort_unless($request->user()->role === 'monitoring_personnel' && $case->submitted_by === $request->user()->id, 403);
+        abort_unless(
+            $request->user()->role === 'monitoring_personnel'
+            && $case->isVisibleTo($request->user())
+            && $case->status !== 'closed',
+            403
+        );
         $data = $request->validate([
             'observation' => 'required|string|max:2000',
             'action_taken' => 'nullable|string|max:2000',
@@ -65,7 +70,10 @@ class FollowUpController extends Controller
             return $followUp;
         });
 
-        $audit->record('case.follow_up_added', $followUp, metadata: ['case_status' => $data['case_status']]);
+        $audit->record('case.follow_up_added', $followUp, metadata: [
+            'case_status' => $data['case_status'],
+            'submitted_by' => $followUp->created_by,
+        ]);
         return back()->with('success', 'Follow-up observation added to the case history.');
     }
 }
