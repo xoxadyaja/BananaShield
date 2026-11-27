@@ -55,6 +55,7 @@ const previewShell=document.getElementById('preview-shell');
 const prompt=document.getElementById('upload-prompt');
 const form=document.getElementById('screening-form');
 const overlay=document.getElementById('processing-overlay');
+const processingSteps=[...document.querySelectorAll('.processing-steps li')];
 const detection=document.getElementById('part-detection');
 const detectionTitle=document.getElementById('part-detection-title');
 const detectionMessage=document.getElementById('part-detection-message');
@@ -75,6 +76,27 @@ const steps=[...document.querySelectorAll('.step')];
 const lines=[...document.querySelectorAll('.step-line')];
 let detectionRequest;
 let previewUrl;
+let processingTimers=[];
+
+function setProcessingStep(number){
+    processingSteps.forEach((step,index)=>{
+        const stepNumber=index+1;
+        const completed=stepNumber<number;
+        const active=stepNumber===number;
+        step.classList.toggle('completed',completed);
+        step.classList.toggle('active',active);
+        step.toggleAttribute('aria-current',active);
+    });
+}
+
+function startProcessingSteps(){
+    processingTimers.forEach(clearTimeout);
+    processingTimers=[];
+    setProcessingStep(1);
+    [2,3,4].forEach((step,index)=>{
+        processingTimers.push(window.setTimeout(()=>setProcessingStep(step),[700,1500,2400][index]));
+    });
+}
 
 function setDetectionState(state,{title,message,part='',label='Banana plant validation',receipt=''}={}){
     detection.hidden=false;
@@ -243,6 +265,7 @@ form?.addEventListener('submit',event=>{
         return;
     }
     if(!form.checkValidity()) return;
+    startProcessingSteps();
     overlay.classList.add('visible');
     overlay.setAttribute('aria-hidden','false');
     document.body.style.overflow='hidden';

@@ -6,10 +6,40 @@
 <section class="case-detail-grid">
 <div class="case-detail-main">
     <article class="card card-pad">
-        <div class="monitor-top"><div><p class="eyebrow">Preliminary classification</p><h2 class="case-result-title">{{ $case->latestPrediction?->display_label ?? 'Result unavailable' }}</h2></div><span class="case-status {{ in_array($case->status,['worsening','referred']) ? 'danger' : 'warning' }}">{{ ucwords($case->status) }}</span></div>
-        @if($case->latestPrediction)
-        <p>{{ $case->latestPrediction->result_message }}</p>
-        <div class="confidence"><div class="confidence-head"><span>Probability</span><strong>{{ round($case->latestPrediction->confidence*100) }}%</strong></div><div class="confidence-track"><div class="confidence-fill" style="width:{{ round($case->latestPrediction->confidence*100) }}%"></div></div></div>
+        @php
+            $prediction = $case->latestPrediction;
+            $screeningImage = $case->images->firstWhere('image_type', 'original') ?? $case->images->first();
+            $detectedView = $screeningImage?->detected_part
+                ?? ucwords(str_replace('_', ' ', $screeningImage?->specific_view ?? $screeningImage?->view_type ?? $case->screening_path));
+            $threshold = $prediction?->modelVersion?->confidence_threshold;
+        @endphp
+        <div class="monitor-top"><div><h2 class="case-result-heading">Saved screening result</h2><p class="field-help">Recorded when this case was submitted. Follow-up updates do not overwrite this result.</p></div><span class="case-status {{ in_array($case->status,['worsening','referred']) ? 'danger' : 'warning' }}">Case {{ ucwords($case->status) }}</span></div>
+        @if($prediction)
+        <section class="case-screening-record" aria-label="Original screening result">
+            <div class="case-result-header">
+                <span class="status-pill {{ $prediction->decision_status === 'conclusive' ? 'success' : 'warning' }}">{{ ucwords($prediction->decision_status) }}</span>
+                <span class="field-help">Saved {{ $prediction->created_at?->format('M j, Y g:i A') }}</span>
+            </div>
+            <div class="case-detected-view">
+                <span class="detected-view-mark" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20c8 0 15-5 16-16-8 1-15 8-16 16Z"/></svg></span>
+                <div><span>Detected image view</span><strong>{{ $detectedView ?: 'Not recorded' }}</strong><small>Identified by {{ $screeningImage?->part_detection_provider ?? 'the image-view check' }} before disease classification.</small></div>
+            </div>
+            <h3 class="case-result-title">{{ $prediction->display_label }}</h3>
+            <p class="case-result-message">{{ $prediction->result_message }}</p>
+            <div class="confidence"><div class="confidence-head"><span>Probability</span><strong>{{ round($prediction->confidence * 100) }}%</strong></div><div class="confidence-track"><div class="confidence-fill" style="width:{{ max(0, min(100, round($prediction->confidence * 100))) }}%"></div></div><p class="field-help" style="margin-top:8px">@if($threshold !== null)Configured inconclusive threshold: {{ round($threshold * 100) }}%. @endif Probability reflects the model's relative certainty, not proof that disease is present.</p></div>
+            <dl class="case-result-metadata">
+                <div><dt>Model</dt><dd>{{ $prediction->modelVersion?->architecture ?? 'Model information not recorded' }}</dd></div>
+                <div><dt>Version</dt><dd>{{ $prediction->modelVersion?->version_name ?? 'Not recorded' }}</dd></div>
+                <div><dt>Image quality</dt><dd>{{ ucwords(str_replace('_', ' ', $prediction->quality_status)) }}</dd></div>
+                @if($prediction->inference_time_ms)<div><dt>Inference time</dt><dd>{{ $prediction->inference_time_ms }} ms</dd></div>@endif
+            </dl>
+            @if(filled($prediction->quality_flags))
+                <div class="case-quality-flags"><strong>Result checks</strong><div>@foreach($prediction->quality_flags as $flag)<span>{{ ucwords(str_replace('_', ' ', $flag)) }}</span>@endforeach</div></div>
+            @endif
+            <p class="case-result-disclaimer">{{ $prediction->disclaimer }}</p>
+        </section>
+        @else
+        <p class="field-help">No saved screening result is available for this case.</p>
         @endif
         <dl class="meta-grid case-meta">
             <div class="meta-item"><dt>Farm</dt><dd>{{ $case->farmProfile?->farm_name ?: 'Not assigned' }}</dd></div>
@@ -17,7 +47,7 @@
             <div class="meta-item"><dt>Banana tree codename</dt><dd>{{ $case->tree_codename ?: 'Not provided' }}</dd></div>
             <div class="meta-item"><dt>Variety</dt><dd>{{ $case->variety ?: 'Not provided' }}</dd></div>
             <div class="meta-item"><dt>Plant age</dt><dd>{{ $case->plant_age ? $case->plant_age.' '.$case->plant_age_unit : 'Not provided' }}</dd></div>
-            <div class="meta-item"><dt>Detected image view</dt><dd>{{ $case->images->first()?->detected_part ?? ucwords(str_replace('_',' ',$case->images->first()?->specific_view ?? $case->images->first()?->view_type ?? $case->screening_path)) }}@if($case->images->first()?->part_detection_provider) <span class="field-help">via {{ $case->images->first()->part_detection_provider }}</span>@endif</dd></div>
+            <div class="meta-item"><dt>Case status</dt><dd>{{ ucwords($case->status) }}</dd></div>
         </dl>
         @if($case->symptom_notes)<div class="case-notes"><strong>Visible symptoms reported</strong><p>{{ $case->symptom_notes }}</p></div>@endif
     </article>
