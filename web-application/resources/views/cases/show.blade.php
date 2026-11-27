@@ -1,7 +1,9 @@
 @extends('layouts.app')
 @section('title', $case->case_number.' - BananaShield')
 @section('content')
-@php($isSubmitter = $case->wasSubmittedBy(auth()->user()))
+@php
+    $isSubmitter = $case->wasSubmittedBy(auth()->user());
+@endphp
 <div class="hero-bar"><div><p class="eyebrow">Farm case history</p><h1 class="page-title">{{ $case->case_number }}</h1><p class="page-copy">Submitted by {{ $case->submitter->name }}@if($isSubmitter) <span class="field-help">(You)</span>@endif for observation on {{ $case->observed_at->format('F j, Y') }}.</p>@if(auth()->user()->role === 'monitoring_personnel' && ! $isSubmitter)<p class="field-help" role="status">Submitted by {{ $case->submitter->name }} — view only.</p>@endif</div><a class="btn btn-secondary" href="{{ route('monitoring') }}">Back to monitoring</a></div>
 
 <section class="case-detail-grid">
