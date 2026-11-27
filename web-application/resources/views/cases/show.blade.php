@@ -1,7 +1,8 @@
 @extends('layouts.app')
 @section('title', $case->case_number.' - BananaShield')
 @section('content')
-<div class="hero-bar"><div><p class="eyebrow">Farm case history</p><h1 class="page-title">{{ $case->case_number }}</h1><p class="page-copy">Submitted by {{ $case->submitter->name }} for observation on {{ $case->observed_at->format('F j, Y') }}.</p></div><a class="btn btn-secondary" href="{{ route('monitoring') }}">Back to monitoring</a></div>
+@php($isSubmitter = $case->wasSubmittedBy(auth()->user()))
+<div class="hero-bar"><div><p class="eyebrow">Farm case history</p><h1 class="page-title">{{ $case->case_number }}</h1><p class="page-copy">Submitted by {{ $case->submitter->name }}@if($isSubmitter) <span class="field-help">(You)</span>@endif for observation on {{ $case->observed_at->format('F j, Y') }}.</p>@if(auth()->user()->role === 'monitoring_personnel' && ! $isSubmitter)<p class="field-help" role="status">Submitted by {{ $case->submitter->name }} — view only.</p>@endif</div><a class="btn btn-secondary" href="{{ route('monitoring') }}">Back to monitoring</a></div>
 
 <section class="case-detail-grid">
 <div class="case-detail-main">
@@ -28,7 +29,7 @@
         @forelse($case->followUps as $followUp)<div class="history-entry"><span class="history-dot"></span><div><div class="history-head"><strong>{{ ucwords($followUp->case_status) }}</strong><time>{{ $followUp->created_at->format('M j, Y g:i A') }}</time></div><p>{{ $followUp->observation }}</p>@if($followUp->action_taken)<small><b>Action recorded:</b> {{ $followUp->action_taken }}</small>@endif<small>Added by {{ $followUp->creator->name }}</small></div></div>@empty<p class="field-help">No follow-up observations have been added.</p>@endforelse
     </article>
 
-    @if(auth()->user()->role === 'monitoring_personnel')
+    @if(auth()->user()->role === 'monitoring_personnel' && $isSubmitter)
     <article class="card card-pad" style="margin-top:18px"><h2>Add follow-up observation</h2><form class="form-stack" method="POST" action="{{ route('cases.follow-ups.store',$case) }}" enctype="multipart/form-data">@csrf
         <label class="field"><span class="field-label">Current observation</span><textarea required name="observation" maxlength="2000" class="input" placeholder="Describe visible changes since the previous record."></textarea></label>
         <label class="field"><span class="field-label">Action taken</span><textarea name="action_taken" maxlength="2000" class="input" placeholder="Record field actions, consultation, or monitoring steps."></textarea></label>
@@ -38,6 +39,8 @@
         </div>
         <button class="btn btn-primary" type="submit">Save follow-up</button>
     </form></article>
+    @elseif(auth()->user()->role === 'monitoring_personnel')
+    <article class="card card-pad" style="margin-top:18px"><p class="field-help" role="status">This report belongs to {{ $case->submitter->name }}. You have view-only access and cannot add follow-ups or change its status.</p></article>
     @endif
 </div>
 

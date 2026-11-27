@@ -11,8 +11,9 @@ use App\Models\User;
 use App\Services\MockPredictionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class RevisedSpecificationTest extends TestCase
@@ -23,7 +24,9 @@ class RevisedSpecificationTest extends TestCase
     {
         parent::setUp();
         $root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'bananashield-tests-'.getmypid();
-        if (! is_dir($root)) mkdir($root, 0777, true);
+        if (! is_dir($root)) {
+            mkdir($root, 0777, true);
+        }
         config(['filesystems.disks.local.root' => $root]);
     }
 
@@ -35,6 +38,7 @@ class RevisedSpecificationTest extends TestCase
     private function image(): UploadedFile
     {
         $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAIAAAD2HxkiAAADWUlEQVR4nO3VMREAIBDEwAc1KEEdopGRZtfAVZlb590BOjvcBkQIPU8IMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECDERQkyEEBMhxEQIMRFCTIQQEyHERAgxEUJMhBATIcRECNP6FaEDUuPql+UAAAAASUVORK5CYII=');
+
         return UploadedFile::fake()->createWithContent('plant.png', $png);
     }
 
@@ -178,7 +182,7 @@ class RevisedSpecificationTest extends TestCase
         $this->assertDatabaseCount('predictions', 1);
         $this->assertDatabaseHas('cases', ['id' => $case->id, 'farm_profile_id' => $farm->id, 'farm_section' => 'Block A', 'tree_codename' => 'BA-H001']);
         $this->assertDatabaseHas('predictions', ['case_id' => $case->id, 'predicted_class' => 'healthy_banana']);
-        $this->assertTrue(\Illuminate\Support\Facades\Storage::disk('local')->exists($image->storage_path));
+        $this->assertTrue(Storage::disk('local')->exists($image->storage_path));
         $this->assertDatabaseHas('audit_logs', ['action' => 'screening.case_created', 'entity_id' => $case->id]);
         $this->get("/cases/{$case->id}")->assertOk()->assertSee('Healthy Screening Farm');
         $this->get("/cases/{$case->id}/images/{$image->id}")->assertOk();
@@ -197,13 +201,17 @@ class RevisedSpecificationTest extends TestCase
         $this->assertDatabaseHas('predictions', ['predicted_class' => 'inconclusive', 'decision_status' => 'inconclusive']);
         $this->get('/monitoring')->assertOk()->assertViewHas('recordTotal', 2)->assertSee('Healthy Banana');
         $this->get('/dashboard')->assertOk()->assertViewHas('caseCount', 2);
-        $this->actingAs($this->user('monitoring_personnel'))->get("/cases/{$case->id}")->assertForbidden();
-        $this->get("/cases/{$case->id}/images/{$image->id}")->assertForbidden();
-        $this->get('/monitoring?outcome=healthy')->assertOk()->assertViewHas('cases', fn ($cases) => $cases->total() === 0);
+        $peerMonitor = $this->user('monitoring_personnel');
+        $this->actingAs($peerMonitor)->get("/cases/{$case->id}")
+            ->assertOk()
+            ->assertSee('Submitted by '.$monitor->name)
+            ->assertSee('view only')
+            ->assertDontSee('Add follow-up observation');
+        $this->get("/cases/{$case->id}/images/{$image->id}")->assertOk();
+        $this->get('/monitoring?outcome=healthy')->assertOk()->assertViewHas('cases', fn ($cases) => $cases->total() === 1);
 
         $this->actingAs($owner)->get('/analytics')->assertOk()
-            ->assertViewHas('analytics', fn ($analytics) =>
-                $analytics['summary'] === ['total' => 2, 'healthy' => 1, 'disease' => 0, 'inconclusive' => 1, 'unavailable' => 0]
+            ->assertViewHas('analytics', fn ($analytics) => $analytics['summary'] === ['total' => 2, 'healthy' => 1, 'disease' => 0, 'inconclusive' => 1, 'unavailable' => 0]
             );
         $this->get('/monitoring?outcome=healthy')->assertOk()->assertViewHas('cases', fn ($cases) => $cases->total() === 1);
         $this->get('/monitoring?decision=inconclusive')->assertOk()->assertViewHas('cases', fn ($cases) => $cases->total() === 1);
@@ -285,6 +293,7 @@ class RevisedSpecificationTest extends TestCase
             'tree_codename' => 'RB-P001',
         ])->assertRedirect('/screenings/new')->assertSessionHasErrors('tree_codename');
     }
+
     public function test_follow_ups_can_be_saved_with_or_without_an_image_without_selecting_a_view(): void
     {
         $monitor = $this->user('monitoring_personnel');
@@ -316,7 +325,7 @@ class RevisedSpecificationTest extends TestCase
         $this->assertSame('unspecified', $image->view_type);
         $this->assertSame('follow_up', $image->image_type);
         $this->assertNotNull($image->follow_up_id);
-        $this->assertTrue(\Illuminate\Support\Facades\Storage::disk('local')->exists($image->storage_path));
+        $this->assertTrue(Storage::disk('local')->exists($image->storage_path));
         $this->assertDatabaseHas('cases', ['id' => $case->id, 'status' => 'improving']);
         $this->get("/cases/{$case->id}/images/{$image->id}")->assertOk();
 
@@ -329,7 +338,6 @@ class RevisedSpecificationTest extends TestCase
         ])->assertForbidden();
         $this->assertDatabaseCount('follow_ups', 2);
     }
-
 
     public function test_image_area_is_automatically_assigned_without_manual_input(): void
     {
@@ -378,13 +386,13 @@ class RevisedSpecificationTest extends TestCase
 
         $this->actingAs($monitor)->get('/dashboard')
             ->assertOk()
-            ->assertViewHas('caseCount', 2)
-            ->assertSee('Reports you submitted');
+            ->assertViewHas('caseCount', 3)
+            ->assertSee('Available reports');
         $this->actingAs($monitor)->get('/monitoring')
             ->assertOk()
-            ->assertViewHas('cases', fn ($cases) => $cases->total() === 2)
-            ->assertSee('2')
-            ->assertSee('submitted reports');
+            ->assertViewHas('cases', fn ($cases) => $cases->total() === 3)
+            ->assertSee('3')
+            ->assertSee('Available reports');
 
         $this->actingAs($owner)->get('/dashboard')
             ->assertOk()
@@ -477,10 +485,104 @@ class RevisedSpecificationTest extends TestCase
 
         $this->actingAs($firstMonitor)->get('/monitoring?q=Ben%20Field%20Monitor')
             ->assertOk()
-            ->assertViewHas('recordTotal', 1)
-            ->assertViewHas('cases', fn ($cases) => $cases->total() === 0)
-            ->assertDontSee('BS-2026-BLOCKA02')
-            ->assertDontSee('BS-2026-BLOCKB01');
+            ->assertViewHas('recordTotal', 3)
+            ->assertViewHas('cases', fn ($cases) => $cases->total() === 2)
+            ->assertSee('BS-2026-BLOCKA02')
+            ->assertSee('BS-2026-BLOCKB01')
+            ->assertSee('All Reports');
+
+        $this->get('/monitoring?report_scope=mine')
+            ->assertOk()
+            ->assertViewHas('selectedReportScope', 'mine')
+            ->assertViewHas('cases', fn ($cases) => $cases->total() === 1 && $cases->first()->submitted_by === $firstMonitor->id)
+            ->assertSee('My Reports')
+            ->assertDontSee('BS-2026-BLOCKA02');
+    }
+
+    public function test_monitoring_personnel_can_read_peer_reports_but_cannot_change_them(): void
+    {
+        $owner = $this->user('farm_owner');
+        $monitorA = User::factory()->create([
+            'name' => 'Ana Reporter',
+            'role' => 'monitoring_personnel',
+            'status' => 'active',
+        ]);
+        $monitorB = User::factory()->create([
+            'name' => 'Ben Reviewer',
+            'role' => 'monitoring_personnel',
+            'status' => 'active',
+        ]);
+        $farm = FarmProfile::create([
+            'farm_name' => 'Shared Visibility Farm',
+            'municipality' => 'Bansalan',
+            'province' => 'Davao del Sur',
+            'managed_by' => $owner->id,
+        ]);
+
+        $peerCase = PlantCase::create([
+            'case_number' => 'BS-SHARED-PEER',
+            'submitted_by' => $monitorA->id,
+            'farm_profile_id' => $farm->id,
+            'farm_section' => 'North Block',
+            'screening_path' => 'leaf',
+            'observed_at' => '2026-09-05',
+            'status' => 'open',
+            'review_status' => 'pending',
+        ]);
+        $ownCase = PlantCase::create([
+            'case_number' => 'BS-SHARED-MINE',
+            'submitted_by' => $monitorB->id,
+            'farm_profile_id' => $farm->id,
+            'farm_section' => 'North Block',
+            'screening_path' => 'leaf',
+            'observed_at' => '2026-09-06',
+            'status' => 'open',
+            'review_status' => 'pending',
+        ]);
+        $path = $this->image()->store('tests', 'local');
+        $image = CaseImage::create([
+            'case_id' => $peerCase->id,
+            'view_type' => 'whole_leaf',
+            'image_type' => 'original',
+            'storage_disk' => 'local',
+            'storage_path' => $path,
+            'original_filename' => 'peer-report.png',
+            'mime_type' => 'image/png',
+            'file_size' => 1,
+            'width' => 300,
+            'height' => 300,
+            'image_quality_status' => 'accepted',
+            'metadata_removed' => false,
+            'uploaded_at' => now(),
+        ]);
+
+        $this->actingAs($monitorB)->get('/monitoring?farm='.$farm->id.'&block=North%20Block')
+            ->assertOk()
+            ->assertViewHas('selectedReportScope', 'all')
+            ->assertViewHas('cases', fn ($cases) => $cases->total() === 2)
+            ->assertSee('BS-SHARED-PEER')
+            ->assertSee('Ana Reporter');
+        $this->get('/monitoring?farm='.$farm->id.'&block=North%20Block&report_scope=mine')
+            ->assertOk()
+            ->assertViewHas('cases', fn ($cases) => $cases->total() === 1 && $cases->first()->id === $ownCase->id)
+            ->assertSee('BS-SHARED-MINE')
+            ->assertDontSee('BS-SHARED-PEER');
+
+        $this->get("/cases/{$peerCase->id}")
+            ->assertOk()
+            ->assertSee('Submitted by Ana Reporter')
+            ->assertSee('view only')
+            ->assertDontSee('Add follow-up observation');
+        $this->get("/cases/{$peerCase->id}/images/{$image->id}")->assertOk();
+        $this->post("/cases/{$peerCase->id}/follow-ups", [
+            'observation' => 'Unauthorized update.',
+            'case_status' => 'closed',
+        ])->assertForbidden();
+        $this->post("/cases/{$peerCase->id}/review", [
+            'review_status' => 'closed',
+        ])->assertForbidden();
+        $this->assertDatabaseMissing('follow_ups', ['case_id' => $peerCase->id]);
+        $this->assertDatabaseHas('cases', ['id' => $peerCase->id, 'status' => 'open', 'review_status' => 'pending']);
     }
 
     public function test_ai_service_failure_creates_no_completed_prediction(): void
@@ -607,6 +709,7 @@ class RevisedSpecificationTest extends TestCase
         $monitor = $this->user('monitoring_personnel');
         $this->actingAs($monitor)->get('/farm-settings')->assertForbidden();
     }
+
     public function test_farm_owner_can_create_monitoring_personnel_accounts_only(): void
     {
         $owner = $this->user('farm_owner');

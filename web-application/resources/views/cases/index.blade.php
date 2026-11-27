@@ -2,7 +2,7 @@
 @section('title', 'Reports - BananaShield')
 @section('content')
 @php
-    $isFiltered = $selectedFarm !== '' || $selectedOutcome !== '' || $search !== '' || $selectedBlock !== '' || $selectedStatus !== '' || $selectedReview !== '' || $selectedDecision !== '';
+    $isFiltered = $selectedFarm !== '' || $selectedOutcome !== '' || $search !== '' || $selectedBlock !== '' || $selectedStatus !== '' || $selectedReview !== '' || $selectedDecision !== '' || $selectedReportScope !== 'all';
     $selectedBlockLabel = $selectedBlock === '__unassigned'
         ? 'Unassigned block'
         : ($blocks->firstWhere('query', $selectedBlock)['name'] ?? $selectedBlock);
@@ -13,12 +13,12 @@
 <div class="hero-bar monitoring-hero">
     <div>
         <h1 class="page-title">Monitor reports by farm block.</h1>
-        <p class="page-copy">{{ auth()->user()->role === 'farm_owner' ? 'Filter reports by farm block, personnel, tree codename, diagnosis, case number, or status.' : 'Filter the reports you submitted by farm block, tree codename, case details, or status.' }}</p>
+        <p class="page-copy">{{ auth()->user()->role === 'farm_owner' ? 'Filter reports by farm block, personnel, tree codename, diagnosis, case number, or status.' : 'Review shared Monitoring Personnel reports by farm block, submitter, tree codename, case details, or status.' }}</p>
     </div>
     <div class="hero-actions monitoring-hero-actions">
-        <div class="report-total" aria-label="{{ number_format($recordTotal) }} {{ auth()->user()->role === 'farm_owner' ? \Illuminate\Support\Str::plural('farm case', $recordTotal) : \Illuminate\Support\Str::plural('submitted report', $recordTotal) }}">
+        <div class="report-total" aria-label="{{ number_format($recordTotal) }} {{ auth()->user()->role === 'farm_owner' ? \Illuminate\Support\Str::plural('farm case', $recordTotal) : \Illuminate\Support\Str::plural('available report', $recordTotal) }}">
             <span class="report-total-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg></span>
-            <span class="report-total-copy"><small>{{ auth()->user()->role === 'farm_owner' ? 'Farm records' : 'Your activity' }}</small><span><strong>{{ number_format($recordTotal) }}</strong> {{ auth()->user()->role === 'farm_owner' ? \Illuminate\Support\Str::plural('case', $recordTotal) : \Illuminate\Support\Str::plural('submitted report', $recordTotal) }}</span></span>
+            <span class="report-total-copy"><small>{{ auth()->user()->role === 'farm_owner' ? 'Farm records' : ($selectedReportScope === 'mine' ? 'Your reports' : 'Available reports') }}</small><span><strong>{{ number_format($recordTotal) }}</strong> {{ auth()->user()->role === 'farm_owner' ? \Illuminate\Support\Str::plural('case', $recordTotal) : \Illuminate\Support\Str::plural('report', $recordTotal) }}</span></span>
         </div>
         @if(auth()->user()->canSubmitScreenings())
             <a class="btn btn-primary new-report-button" href="{{ route('screenings.create') }}">
@@ -83,6 +83,15 @@
             @endforeach
         </select>
     </label>
+    @if(auth()->user()->role === 'monitoring_personnel')
+    <label class="report-status-filter">
+        <span class="report-filter-label">Report visibility</span>
+        <select name="report_scope" aria-label="Filter reports by submitter">
+            <option value="all" @selected($selectedReportScope === 'all')>All Reports</option>
+            <option value="mine" @selected($selectedReportScope === 'mine')>My Reports</option>
+        </select>
+    </label>
+    @endif
     </div>
     @if($selectedReview !== '' || $selectedDecision !== '')
         <div class="report-active-filters">
@@ -99,7 +108,7 @@
             @if($selectedFarmName)<p>Farm: <strong>{{ $selectedFarmName }}</strong></p>@endif
             <p>{{ number_format($cases->total()) }} {{ \Illuminate\Support\Str::plural('case', $cases->total()) }} {{ $isFiltered ? 'match the current filters' : 'available for review' }}.</p>
         </div>
-        @if($selectedBlock !== '')<a href="{{ route('monitoring', array_filter(['farm' => $selectedFarm, 'outcome' => $selectedOutcome, 'q' => $search, 'status' => $selectedStatus, 'review' => $selectedReview, 'decision' => $selectedDecision])) }}">View every block</a>@endif
+        @if($selectedBlock !== '')<a href="{{ route('monitoring', array_filter(['farm' => $selectedFarm, 'outcome' => $selectedOutcome, 'q' => $search, 'status' => $selectedStatus, 'review' => $selectedReview, 'decision' => $selectedDecision, 'report_scope' => $selectedReportScope === 'all' ? null : $selectedReportScope])) }}">View every block</a>@endif
     </div>
 
     @if($cases->isEmpty())
@@ -127,7 +136,7 @@
                         <p class="report-list-location"><strong>{{ $case->case_number }}</strong><span>Farm: {{ $case->farmProfile?->farm_name ?: 'Not assigned' }}</span><span>{{ $case->farm_section ?: 'Unassigned block' }}</span><span>{{ $case->tree_codename ? 'Tree '.$case->tree_codename : 'Tree codename not provided' }}</span></p>
                         <dl class="report-list-details">
                             <div><dt>Observed</dt><dd>{{ $case->observed_at->format('M j, Y') }}</dd></div>
-                            <div><dt>Submitted by</dt><dd>{{ $case->submitter->name }}</dd></div>
+                            <div><dt>Submitted by</dt><dd>{{ $case->submitter->name }}@if($case->wasSubmittedBy(auth()->user())) <span class="field-help">(You)</span>@endif</dd></div>
                             <div><dt>Owner review</dt><dd>{{ ucwords(str_replace('_', ' ', $case->review_status)) }}</dd></div>
                             <div><dt>Follow-ups</dt><dd>{{ $case->follow_ups_count }}</dd></div>
                         </dl>

@@ -3,13 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\CaseImage;
-use App\Models\FarmSection;
 use App\Models\FarmProfile;
+use App\Models\FarmSection;
 use App\Models\PlantCase;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class CaseController extends Controller
@@ -25,6 +25,7 @@ class CaseController extends Controller
             'status' => ['nullable', Rule::in(['open', 'improving', 'unchanged', 'worsening', 'referred', 'closed'])],
             'review' => ['nullable', Rule::in(['pending', 'reviewed', 'needs_follow_up', 'referred', 'closed', 'self_recorded'])],
             'decision' => ['nullable', Rule::in(['conclusive', 'inconclusive'])],
+            'report_scope' => ['nullable', Rule::in(['all', 'mine'])],
         ]);
 
         $selectedFarm = $filters['farm'] ?? '';
@@ -34,7 +35,13 @@ class CaseController extends Controller
         $selectedStatus = $filters['status'] ?? '';
         $selectedReview = $filters['review'] ?? '';
         $selectedDecision = $filters['decision'] ?? '';
+        $selectedReportScope = $request->user()->role === 'monitoring_personnel'
+            ? ($filters['report_scope'] ?? 'all')
+            : 'all';
         $visibleCases = PlantCase::query()->visibleTo($request->user());
+        if ($selectedReportScope === 'mine') {
+            $visibleCases->where('submitted_by', $request->user()->id);
+        }
         $recordTotal = (clone $visibleCases)->count();
         if ($selectedFarm === '__unassigned') {
             $visibleCases->whereNull('farm_profile_id');
@@ -166,21 +173,24 @@ class CaseController extends Controller
             'selectedStatus',
             'selectedReview',
             'selectedDecision',
+            'selectedReportScope',
         ));
     }
 
     public function show(Request $request, PlantCase $case)
     {
-        $this->authorizeCase($request, $case);
+        $this->authorizeCaseRead($request, $case);
         $case->load(['submitter', 'reviewer', 'farmProfile', 'images', 'latestPrediction.modelVersion', 'followUps.creator']);
+
         return view('cases.show', compact('case'));
     }
 
     public function image(Request $request, PlantCase $case, CaseImage $image)
     {
-        $this->authorizeCase($request, $case);
+        $this->authorizeCaseRead($request, $case);
         abort_unless($image->case_id === $case->id, 404);
         abort_unless(Storage::disk($image->storage_disk)->exists($image->storage_path), 404);
+
         return Storage::disk($image->storage_disk)->response($image->storage_path, null, ['Content-Type' => $image->mime_type]);
     }
 
@@ -192,17 +202,21 @@ class CaseController extends Controller
         ]);
 
         $updates = $data + ['reviewed_by' => $request->user()->id, 'reviewed_at' => now()];
-        if ($data['review_status'] === 'referred') $updates += ['status' => 'referred', 'referred_at' => now()];
-        if ($data['review_status'] === 'closed') $updates += ['status' => 'closed', 'closed_at' => now()];
+        if ($data['review_status'] === 'referred') {
+            $updates += ['status' => 'referred', 'referred_at' => now()];
+        }
+        if ($data['review_status'] === 'closed') {
+            $updates += ['status' => 'closed', 'closed_at' => now()];
+        }
         $case->update($updates);
         $audit->record('case.owner_reviewed', $case, metadata: ['review_status' => $data['review_status']]);
 
         return back()->with('success', 'Owner review saved without changing the historical prediction.');
     }
 
-    private function authorizeCase(Request $request, PlantCase $case): void
+    private function authorizeCaseRead(Request $request, PlantCase $case): void
     {
         abort_unless($case->isReportable(), 404);
-        abort_unless($request->user()->role === 'farm_owner' || $case->submitted_by === $request->user()->id, 403);
+        abort_unless($case->isVisibleTo($request->user()), 403);
     }
 }

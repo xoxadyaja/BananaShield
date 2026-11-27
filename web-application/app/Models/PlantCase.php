@@ -21,13 +21,40 @@ class PlantCase extends Model
         ];
     }
 
-    public function submitter() { return $this->belongsTo(User::class, 'submitted_by'); }
-    public function reviewer() { return $this->belongsTo(User::class, 'reviewed_by'); }
-    public function farmProfile() { return $this->belongsTo(FarmProfile::class); }
-    public function images() { return $this->hasMany(CaseImage::class, 'case_id'); }
-    public function predictions() { return $this->hasMany(Prediction::class, 'case_id'); }
-    public function latestPrediction() { return $this->hasOne(Prediction::class, 'case_id')->latestOfMany(); }
-    public function followUps() { return $this->hasMany(FollowUp::class, 'case_id')->latest(); }
+    public function submitter()
+    {
+        return $this->belongsTo(User::class, 'submitted_by');
+    }
+
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function farmProfile()
+    {
+        return $this->belongsTo(FarmProfile::class);
+    }
+
+    public function images()
+    {
+        return $this->hasMany(CaseImage::class, 'case_id');
+    }
+
+    public function predictions()
+    {
+        return $this->hasMany(Prediction::class, 'case_id');
+    }
+
+    public function latestPrediction()
+    {
+        return $this->hasOne(Prediction::class, 'case_id')->latestOfMany();
+    }
+
+    public function followUps()
+    {
+        return $this->hasMany(FollowUp::class, 'case_id')->latest();
+    }
 
     public function scopeReportable(Builder $query): Builder
     {
@@ -38,8 +65,7 @@ class PlantCase extends Model
     public function scopeOutcome(Builder $query, string $outcome): Builder
     {
         return $query->where(function (Builder $cases) use ($outcome) {
-            $cases->whereHas('latestPrediction', fn (Builder $prediction) =>
-                $prediction->whereRaw(Prediction::outcomeSql().' = ?', [$outcome])
+            $cases->whereHas('latestPrediction', fn (Builder $prediction) => $prediction->whereRaw(Prediction::outcomeSql().' = ?', [$outcome])
             );
             if ($outcome === 'unavailable') {
                 $cases->orWhereDoesntHave('latestPrediction');
@@ -51,9 +77,21 @@ class PlantCase extends Model
     {
         $query->reportable();
 
-        return $user->role === 'monitoring_personnel'
-            ? $query->where('submitted_by', $user->id)
-            : $query;
+        // Farm Owners already review every report in the deployment. Monitoring
+        // Personnel use the same read scope so they can coordinate on cases,
+        // while write permissions remain restricted to the original submitter.
+        return $query;
+    }
+
+    public function isVisibleTo(User $user): bool
+    {
+        return $this->isReportable()
+            && in_array($user->role, ['farm_owner', 'monitoring_personnel'], true);
+    }
+
+    public function wasSubmittedBy(User $user): bool
+    {
+        return $this->submitted_by === $user->id;
     }
 
     public function isReportable(): bool
