@@ -9,22 +9,17 @@
     <a class="btn btn-secondary" href="{{ route('dashboard') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m14 6-6 6 6 6"/></svg>Back to dashboard</a>
 </div>
 
-<section class="card card-pad account-management-card account-module">
-    <div class="section-head settings-section-head">
-        <div><h2>Monitoring personnel accounts</h2><p class="field-help">New accounts are activated immediately and can sign in with their password.</p></div>
-        <span class="field-help">{{ $monitoringAccounts->total() }} {{ \Illuminate\Support\Str::plural('account', $monitoringAccounts->total()) }}</span>
-    </div>
+<section class="account-module">
+    <header class="account-module-head">
+        <div><h2>Monitoring personnel accounts</h2><p>Review authorized screening personnel, their status, and submitted reports.</p></div>
+        <span>{{ $monitoringAccounts->total() }} {{ \Illuminate\Support\Str::plural('account', $monitoringAccounts->total()) }}</span>
+    </header>
     <div class="account-manager-grid">
-        <form class="account-create-form form-stack" method="POST" action="{{ route('accounts.store') }}">
-            @csrf
-            <div><h3>Create monitoring account</h3><p class="field-help">The role is fixed to Monitoring Personnel.</p></div>
-            <label class="field"><span class="field-label">Full name</span><input required class="input" name="monitor_name" value="{{ old('monitor_name') }}" maxlength="120" autocomplete="name"></label>
-            <label class="field"><span class="field-label">Email address</span><input required type="email" class="input" name="monitor_email" value="{{ old('monitor_email') }}" maxlength="255" autocomplete="email"></label>
-            <label class="field"><span class="field-label">Password</span><input required type="password" class="input" name="monitor_password" minlength="8" autocomplete="new-password" aria-describedby="monitor-password-help"><span class="field-help" id="monitor-password-help">Use at least 8 characters and share it securely.</span></label>
-            <label class="field"><span class="field-label">Confirm password</span><input required type="password" class="input" name="monitor_password_confirmation" minlength="8" autocomplete="new-password"></label>
-            <button class="btn btn-primary" type="submit">Create monitoring account</button>
-        </form>
-        <div class="account-list">
+        <span class="sr-only">Create monitoring account</span>
+        <section class="account-list card" aria-labelledby="account-directory-title">
+            <header class="account-list-head">
+                <div><h3 id="account-directory-title">Authorized personnel</h3><p>Open a profile to update access or review activity.</p></div>
+            </header>
             <div class="account-scroll" tabindex="0" aria-label="Monitoring Personnel account list">
                 @forelse($monitoringAccounts as $account)
                     <article class="account-card">
@@ -40,7 +35,18 @@
                 @endforelse
             </div>
             @if($monitoringAccounts->hasPages())<div class="pagination-wrap">{{ $monitoringAccounts->links() }}</div>@endif
-        </div>
+        </section>
+        <aside class="account-create-panel" aria-labelledby="create-monitor-title">
+            <form class="account-create-form form-stack" method="POST" action="{{ route('accounts.store') }}">
+                @csrf
+                <div class="account-create-head"><span class="account-create-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2-7 6-7s6 3 6 7M18 8v6M15 11h6"/></svg></span><div><h3 id="create-monitor-title">Create monitoring account</h3><p class="field-help">Accounts are activated immediately.</p></div></div>
+                <label class="field"><span class="field-label">Full name</span><input required class="input" name="monitor_name" value="{{ old('monitor_name') }}" maxlength="120" autocomplete="name"></label>
+                <label class="field"><span class="field-label">Email address</span><input required type="email" class="input" name="monitor_email" value="{{ old('monitor_email') }}" maxlength="255" autocomplete="email"></label>
+                <div class="account-password-fields"><label class="field"><span class="field-label">Password</span><input required type="password" class="input" name="monitor_password" minlength="8" autocomplete="new-password" aria-describedby="monitor-password-help"></label><label class="field"><span class="field-label">Confirm password</span><input required type="password" class="input" name="monitor_password_confirmation" minlength="8" autocomplete="new-password"></label></div>
+                <p class="field-help" id="monitor-password-help">Use at least 8 characters and share the temporary password securely.</p>
+                <button class="btn btn-primary" type="submit">Create account <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+            </form>
+        </aside>
     </div>
 </section>
 @endsection

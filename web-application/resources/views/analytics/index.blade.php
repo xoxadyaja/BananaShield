@@ -5,15 +5,23 @@
     $trendMax = max(1, ...array_column($analytics['trend'], 'total'));
     $trendTotal = array_sum(array_column($analytics['trend'], 'total'));
     $total = $analytics['summary']['total'];
+    $healthyShare = $total ? round(($analytics['summary']['healthy'] / $total) * 100) : 0;
+    $diseaseShare = $total ? round(($analytics['summary']['disease'] / $total) * 100) : 0;
     $outcomes = ['healthy' => 'Healthy', 'disease' => 'Disease indication', 'inconclusive' => 'Inconclusive', 'unavailable' => 'Unavailable'];
 @endphp
 
-<div class="hero-bar">
-    <div>
+<div class="hero-bar analytics-hero">
+    <div class="analytics-hero-copy">
         <h1 class="page-title">Farm analytics</h1>
         <p class="page-copy">Review healthy screenings, disease indications, and follow-up activity across your recorded farm reports.</p>
     </div>
-    <a class="btn btn-secondary" href="{{ route('monitoring', $reportParams) }}">View reports</a>
+    <div class="analytics-hero-actions">
+        <div class="analytics-hero-signal" aria-label="{{ $healthyShare }} percent of recorded screenings are healthy">
+            <span class="analytics-signal-chart" style="--healthy-share: {{ $healthyShare }}%; --disease-share: {{ $diseaseShare }}%"><span>{{ $healthyShare }}%</span></span>
+            <span><strong>Healthy results</strong><small>of all saved screenings</small></span>
+        </div>
+        <a class="btn btn-secondary" href="{{ route('monitoring', $reportParams) }}">View reports</a>
+    </div>
 </div>
 
 <form class="analytics-filter" method="GET" action="{{ route('analytics') }}">
@@ -32,6 +40,13 @@
     <p class="analytics-scope"><strong>{{ $selectedFarmName }}</strong><span>All-time totals · Updated {{ now()->format('M j, Y') }}</span></p>
 </form>
 
+<header class="analytics-content-heading">
+    <div>
+        <h2>Farm overview</h2>
+        <p>A quick read of every saved screening in the selected scope.</p>
+    </div>
+    <span>{{ number_format($total) }} recorded {{ \Illuminate\Support\Str::plural('screening', $total) }}</span>
+</header>
 <section class="analytics-summary" aria-label="Recorded screening totals">
     @foreach($analytics['metrics'] as $metric)
         <a class="analytics-summary-item analytics-tone-{{ $metric['tone'] }}" href="{{ $metric['href'] }}">
@@ -53,6 +68,12 @@
     </div>
 @endif
 
+<header class="analytics-content-heading analytics-content-heading-insights">
+    <div>
+        <h2>Screening insights</h2>
+        <p>Compare submission activity with the latest recorded results.</p>
+    </div>
+</header>
 <div class="analytics-panels">
     <section class="analytics-panel" aria-labelledby="submission-activity-title">
         <header class="analytics-panel-heading">
@@ -78,7 +99,7 @@
         @if($trendTotal === 0)<p class="analytics-panel-note">No submissions in the last six months.</p>@endif
     </section>
 
-    <section class="analytics-panel" aria-labelledby="class-distribution-title">
+    <section class="analytics-panel analytics-results-panel" aria-labelledby="class-distribution-title">
         <header class="analytics-panel-heading"><div><h2 id="class-distribution-title">Screening results</h2><p>Latest result per report · All time</p></div></header>
         <div class="analytics-distribution">
             @foreach($analytics['classes'] as $class)

@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Dashboard - BananaShield')
 @section('content')
-<div class="hero-bar">
+<div class="hero-bar dashboard-hero">
     <div><p class="eyebrow">{{ ucwords(str_replace('_', ' ', $user->role)) }} workspace</p><h1 class="page-title">Good day, {{ explode(' ', trim($user->name))[0] }}.</h1><p class="page-copy">{{ $user->role === 'farm_owner' ? 'Review submitted farm cases, follow-up records, advisories, and operational summaries.' : ($user->role === 'monitoring_personnel' ? 'Capture plant images, submit farm cases, and record follow-up observations.' : 'Maintain BananaShield users, supported content, model settings, and activity records.') }}</p></div>
     @if($user->role === 'monitoring_personnel')<a class="btn btn-primary" href="{{ route('screenings.create') }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>Start new screening</a>@elseif($user->role === 'farm_owner')<a class="btn btn-primary" href="{{ route('monitoring') }}">Review farm cases</a>@else<a class="btn btn-primary" href="{{ route('admin.index') }}">Open administration</a>@endif
 </div>

@@ -9,7 +9,7 @@
     <link rel="icon" href="{{ asset('images/bananashield-logo.svg') }}?v={{ filemtime(public_path('images/bananashield-logo.svg')) }}" type="image/svg+xml">
     <link rel="stylesheet" href="{{ asset('css/bananashield.css') }}?v={{ filemtime(public_path('css/bananashield.css')) }}">
 </head>
-<body class="{{ request()->routeIs('login') ? 'auth-route' : 'app-route' }}">
+<body class="{{ request()->routeIs('login') ? 'auth-route' : 'app-route' }} {{ request()->routeIs('dashboard') ? 'dashboard-route' : '' }}">
 <a class="skip-link" href="#main-content">Skip to main content</a>
 <div class="shell">
     <header class="app-header">
@@ -58,7 +58,7 @@
                 <div class="sidebar-help"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><div><strong>Preliminary screening only</strong><small>Results do not replace agricultural assessment or laboratory confirmation.</small></div></div>
             </aside>
         @endauth
-        <main class="main app-content" id="main-content" tabindex="-1">
+        <main class="main app-content {{ request()->routeIs('dashboard') ? 'dashboard-module' : '' }}" id="main-content" tabindex="-1">
             @if(session('success'))<div class="alert alert-success"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m5 12 4 4L19 6"/></svg><span>{{ session('success') }}</span></div>@endif
             @if($errors->any())<div class="alert alert-error"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 17h.01"/></svg><span>{{ $errors->first() }}</span></div>@endif
             @yield('content')

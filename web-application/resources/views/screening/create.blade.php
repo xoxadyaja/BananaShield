@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'New AI screening - BananaShield')
 @section('content')
-<div class="hero-bar"><div><h1 class="page-title">Upload a clear banana plant image.</h1><p class="page-copy">BananaShield automatically analyzes the visible banana area before generating a preliminary screening result.</p></div></div>
+<div class="hero-bar screening-hero"><div><h1 class="page-title">Upload a clear banana plant image.</h1><p class="page-copy">BananaShield automatically analyzes the visible banana area before generating a preliminary screening result.</p></div></div>
 
 <div class="stepper" aria-label="Screening progress">
     <div class="step current" data-step="1"><span class="step-num">1</span><span>Add image</span></div><span class="step-line" data-line="1"></span>
